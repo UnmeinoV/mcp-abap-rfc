@@ -1,0 +1,116 @@
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+build/
+coverage/
+.smithery/
+*.mcpb
+
+# NPM packages (local builds, releases are on GitHub)
+*.tgz
+!*.tgz  # But allow in releases
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+.mcpregistry_github_token
+.mcpregistry_registry_token
+
+# Test configuration (contains real transport requests and sensitive data)
+tests/test-config.yaml
+# ...and every suffixed variant (backups, .bak, the .LOCAL-HELD copy made while
+# publishing, etc.). Only the template is committed. Without the glob a file like
+# tests/test-config.yaml.LOCAL-HELD is NOT ignored and can be committed with real
+# transport request numbers and system SIDs in it.
+tests/test-config.yaml.*
+!tests/test-config.yaml.template
+
+# Logs
+logs
+*.log
+# SAP NW RFC SDK logs and traces (carry hostname, OS user, cwd)
+dev_rfc.log
+rfc*.trc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+doc/development/logs/*.log
+.getobjectslist.cache.json
+
+# Editor directories and files
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Lock state files (persistent lock handles)
+.locks/
+*.locks.json
+
+# Session state files (cookies, CSRF tokens)
+.sessions/
+*.sessions.json
+
+# Data directory (created by Docker containers)
+data/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Backup files
+*.bak
+
+*sk.json
+*.env
+
+# ANTLR4 generated files
+src/generated/
+tools/antlr/
+
+
+
+*.d.ts
+*.d.ts.map
+mdd.json
+.npm-cache/**
+SAP_ADT.json
+dev.json
+desktop.ini
+.vscode/mcp.json
+.claude/settings.local.json
+.codex
+.worktrees/
+
+# CodeGraph local index — a machine-local, regenerable 25 MB artifact
+.codegraph/
+
+# Hi platform local project state — written by `hi project init`, regenerable
+.hi/
+
+# Hi platform pack output
+.hi-pack/
+
+# Written by `hi project init` and keyed to one machine: it carries absolute
+# paths to this checkout, to the local node.exe, and to the installed asset
+# VERSION directory, so it is stale the moment anyone publishes or installs.
+.mcp.json
+
+# SAP NW RFC SDK: SAP-licensed, download it yourself (see runtime/README.md)
+/runtime/*
+!/runtime/README.md

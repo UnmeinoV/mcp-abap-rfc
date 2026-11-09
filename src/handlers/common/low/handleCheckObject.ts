@@ -1,0 +1,234 @@
+/**
+ * CheckObject Handler - Syntax check for ABAP objects via ADT API.
+ *
+ * Dispatches on object_type to an ADT URI and runs the check through the shared
+ * `checkObjectAndReport` (see it for why none of these go through the
+ * dependency's per-type check() wrappers any more).
+ */
+
+import {
+  buildActivationUri,
+  checkObjectAndReport,
+} from '../../../lib/adtObjectOps';
+import { createAdtClient } from '../../../lib/clients';
+import type { HandlerContext } from '../../../lib/handlers/interfaces';
+import {
+  type AxiosResponse,
+  restoreSessionInConnection,
+  return_error,
+  return_response,
+} from '../../../lib/utils';
+
+export const TOOL_DEFINITION = {
+  name: 'CheckObjectLow',
+  available_in: ['onprem'] as const,
+  description:
+    '[low-level] Perform syntax check on an ABAP object without activation. Returns syntax errors, warnings, and messages.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      object_name: {
+        type: 'string',
+        description: 'Object name (e.g., ZCL_MY_CLASS, Z_MY_PROGRAM)',
+      },
+      object_type: {
+        type: 'string',
+        description: 'Object type',
+        enum: [
+          'class',
+          'program',
+          'interface',
+          'function_group',
+          'table',
+          'structure',
+          'view',
+          'domain',
+          'data_element',
+          'behavior_definition',
+          'metadata_extension',
+        ],
+      },
+      version: {
+        type: 'string',
+        description:
+          "Version to check: 'active' or 'inactive' (default active)",
+        enum: ['active', 'inactive'],
+      },
+      session_id: {
+        type: 'string',
+        description:
+          'Session ID from GetSession. If not provided, a new session will be created.',
+      },
+      session_state: {
+        type: 'object',
+        description:
+          'Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.',
+        properties: {
+          cookies: { type: 'string' },
+          csrf_token: { type: 'string' },
+          cookie_store: { type: 'object' },
+        },
+      },
+    },
+    required: ['object_name', 'object_type'],
+  },
+} as const;
+
+interface CheckObjectArgs {
+  object_name: string;
+  object_type: string;
+  version?: string;
+  session_id?: string;
+  session_state?: {
+    cookies?: string;
+    csrf_token?: string;
+    cookie_store?: Record<string, string>;
+  };
+}
+
+export async function handleCheckObject(
+  context: HandlerContext,
+  args: CheckObjectArgs,
+) {
+  const { connection, logger } = context;
+  try {
+    const {
+      object_name,
+      object_type,
+      version = 'active',
+      session_id,
+      session_state,
+    } = args as CheckObjectArgs;
+
+    if (!object_name || !object_type) {
+      return return_error(
+        new Error('object_name and object_type are required'),
+      );
+    }
+
+    const validTypes = [
+      'class',
+      'program',
+      'interface',
+      'function_group',
+      'table',
+      'structure',
+      'view',
+      'domain',
+      'data_element',
+      'behavior_definition',
+      'metadata_extension',
+    ];
+    const objectType = object_type.toLowerCase();
+    if (!validTypes.includes(objectType)) {
+      return return_error(
+        new Error(
+          `Invalid object_type. Must be one of: ${validTypes.join(', ')}`,
+        ),
+      );
+    }
+
+    const validVersions = ['active', 'inactive'];
+    const checkVersion = validVersions.includes(version.toLowerCase())
+      ? (version.toLowerCase() as 'active' | 'inactive')
+      : 'active';
+
+    createAdtClient(connection, logger); // wrap connection (sap-language pinning)
+
+    if (session_id && session_state) {
+      await restoreSessionInConnection(connection, session_id, session_state);
+    } else {
+    }
+
+    const objectName = object_name.toUpperCase();
+    logger?.info(
+      `Starting object check: ${objectName} (type: ${objectType}, version: ${checkVersion})`,
+    );
+
+    // object_type -> the ADT type code buildActivationUri already knows.
+    const TYPE_CODES: Record<string, string> = {
+      class: 'CLAS',
+      program: 'PROG',
+      interface: 'INTF',
+      function_group: 'FUGR',
+      table: 'TABL',
+      structure: 'STRU',
+      view: 'DDLS',
+      domain: 'DOMA',
+      data_element: 'DTEL',
+      behavior_definition: 'BDEF',
+      metadata_extension: 'DDLX',
+    };
+
+    try {
+      const typeCode = TYPE_CODES[objectType];
+      if (!typeCode) {
+        return return_error(
+          new Error(`Unsupported object_type: ${object_type}`),
+        );
+      }
+      const report = await checkObjectAndReport(connection, {
+        objectUri: buildActivationUri(objectName, typeCode),
+        subject: `${objectType.replace(/_/g, ' ')} ${objectName}`,
+        version: checkVersion,
+      });
+      const checkResult = report.check_result;
+
+      logger?.info(`✅ CheckObject completed: ${objectName}`);
+      logger?.info(`   Status: ${checkResult.status}`);
+      logger?.info(
+        `   Errors: ${checkResult.errors.length}, Warnings: ${checkResult.warnings.length}`,
+      );
+
+      return return_response({
+        data: JSON.stringify(
+          {
+            success: report.success,
+            object_name: objectName,
+            object_type: objectType,
+            version: checkVersion,
+            check_result: checkResult,
+            session_id: session_id || null,
+            session_state: null, // Session state is not persisted by this server,
+            message: report.message,
+            findings: report.findings,
+          },
+          null,
+          2,
+        ),
+      } as AxiosResponse);
+    } catch (error: any) {
+      logger?.error(`Error checking object ${objectName}:`, error);
+
+      let errorMessage = `Failed to check object: ${error.message || String(error)}`;
+
+      if (error.response?.status === 404) {
+        errorMessage = `Object ${objectName} not found.`;
+      } else if (
+        error.response?.data &&
+        typeof error.response.data === 'string'
+      ) {
+        try {
+          const { XMLParser } = require('fast-xml-parser');
+          const parser = new XMLParser({
+            ignoreAttributes: false,
+            attributeNamePrefix: '@_',
+          });
+          const errorData = parser.parse(error.response.data);
+          const errorMsg =
+            errorData['exc:exception']?.message?.['#text'] ||
+            errorData['exc:exception']?.message;
+          if (errorMsg) {
+            errorMessage = `SAP Error: ${errorMsg}`;
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+
+      return return_error(new Error(errorMessage));
+    }
+  } catch (error: any) {
+    return return_error(error);
+  }
+}

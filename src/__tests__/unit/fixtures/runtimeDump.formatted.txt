@@ -1,0 +1,110 @@
+----------------------------------------------------------------------------------------------------
+类别                     ABAP 编程错误                                                 
+运行时错误                  BEHAVIOR_CONTRACT_VIOLATION                                                  
+ABAP：程序                ZMY_DUMP_REPORT                                                              
+应用程序组件                 未分配                                                                          
+日期和时间                  2026/09/24 06:37:58 (UTC+8)                                                  
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+|短文本                                                                                               |
+|    An RAP contract has been violated.                                                            |
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+|发生了什么？                                                                                            |
+|    Error in the ABAP application program.                                                        |
+|                                                                                                  |
+|    The current ABAP program "ZMY_DUMP_REPORT" had to be terminated because it                    |
+|     found a                                                                                      |
+|    statement that could not be executed.                                                         |
+|    An RAP contract has been violated: "CC/C:MISSING_CID".                                        |
+|                                                                                                  |
+|    Affected Behavior Definition / Entity: "/DMO/FSA_R_ROOTTP". Operation / Value:                |
+|     "ACTIVATE".                                                                                  |
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+|您可以做什么？                                                                                           |
+|    Note which actions and entries caused the error to occur.                                     |
+|                                                                                                  |
+|    Consult your SAP administrator.                                                               |
+|                                                                                                  |
+|    Using transaction ST22 for ABAP dump analysis, you can view, manage,                          |
+|    and retain termination messages for longer periods.                                           |
+|    Note which actions and entries caused the error to occur.                                     |
+|                                                                                                  |
+|    Consult your SAP administrator.                                                               |
+|                                                                                                  |
+|    Using transaction ST22 for ABAP dump analysis, you can view, manage,                          |
+|    and retain termination messages for longer periods.                                           |
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+|错误分析                                                                                              |
+|    The reason for the runtime error (see the list below) is: (2)                                 |
+|    Runtime errors in connection with contract violations can occur for the                       |
+|    following reasons: (0) This contract violation always causes an error                         |
+|    to occur. (1) It is required by the "strict” specification in the                             |
+|    current BO. (2) It is required by the "strict” specification in the BO                        |
+|    that is called. (3) The contract violation occurs in Restricted ABAP.                         |
+|    (4) The corresponding checkpoint group is set to "error". (5) The                             |
+|    violation occurs in a BO enhancement in Restricted ABAP.                                      |
+|    The ABAP program must be corrected.                                                           |
+|                                                                                                  |
+|    Additional information about the various contract violations:                                 |
+|                                                                                                  |
+|    - "MISSING_CID":                                                                              |
+|    Every EML operation that has field %CID (instance-generating                                  |
+|    operations) should be supplied with a unique value in this field.                             |
+|    有关更多信息，请访问以下链接： ABAP 关键字文档.                                                                   |
+|    - "EMPTY_UPDATE":                                                                             |
+|    Every EML-UPDATE operation should supply at least one non-key field for                       |
+|    every update record. In the %CONTROLS structure of every update record,                       |
+|    at least one flag should therefore be set for a non-key field.                                |
+|    - "DUPLICATE_UPDATE", "DUPLICATE_DELETE", "DUPLICATE_EXECUTE":                                |
+|                                                                                                  |
+|    - "AUGM_RELATING":                                                                            |
+|    A “Modify Augmenting” statement that performs operations on instances                         |
+|    that are not already included in the original request should relate                           |
+|    these instances to instances from the original request using the                              |
+|    RELATING addition, since otherwise responses cannot be assigned.                              |
+|    - "AUGM_OVERWRITE":                                                                           |
+|    A “Modify Augmenting” statement must not overwrite any fields from the                        |
+|    original request. This means that the same %CONTROL flag must not be                          |
+|    set for the same instance in both the original change and in the                              |
+|    "Augmenting" change.                                                                          |
+|    - "DERIVED_TYPE_CONFLICT":                                                                    |
+|                                                                                                  |
+|    - "CONVERT_KEY_NOT_MAPPED":                                                                   |
+|    In the "ADJUST_NUMBERS" phase, a BO with "Late Numbering" must return                         |
+|    the mapping of all assigned temporarykeys (PIDs) to final keys so that                        |
+|    these can be retrieved using the CONVERT KEY statement.                                       |
+|    有关更多信息，请访问以下链接： ABAP 关键字文档.                                                                   |
+|    statement that performs operations on instances that are not already                          |
+|    included in the original request should relate these instances to                             |
+|    instances from the original request using the RELATING addition, since                        |
+|    otherwise responses cannot be assigned.                                                       |
+|                                                                                                  |
+|    In case of contract violation "AUGM_OVERWRITE": A “Modify Augmenting”                         |
+|    statement must not overwrite any fields from the original request. This                       |
+|    means that the same %CONTROL flag must not be set for the same instance                       |
+|    in both the original change and in the "Augmenting" change.                                   |
+----------------------------------------------------------------------------------------------------
+
+----------------------------------------------------------------------------------------------------
+|系统环境                                                                                              |
+|    SAP Release..... 758                                                                          |
+|    SAP Basis level 0002                                                                          |
+|                                                                                                  |
+|    Application server... ABCHOST01                                                               |
+|    Instance name....... ABCHOST01_ABC_10                                                         |
+|    Network address...... 192.168.11.90                                                           |
+|    Operating system... Linux                                                                     |
+|    Release.............. 6.4.0-150600.21-defa                                                    |
+|    Hardware type....... x86_64                                                                   |
+|    Character length..... 16 Bits                                                                 |
+|    Pointer length........ 64 Bits                                                                |
+|    Work process number... 19                                                                     |
+|    Work process ID....... 5065                                                                   |
+|    ABAP load version.... 3236                                                                    |
