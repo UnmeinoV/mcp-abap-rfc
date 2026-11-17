@@ -30,8 +30,11 @@ import type { HandlerContext } from '../handlers/interfaces';
 import { return_error } from '../utils';
 import {
   callRfcHelper,
+  hasStaleSignature,
   isNewerVersion,
   markRewritten,
+  noteHelperCalled,
+  RESTART_REQUIRED_MARKER,
   type RfcHelperSpec,
   RfcHelperUnavailable,
   wasRewritten,
@@ -116,8 +119,10 @@ async function installedVersions(
   for (const m of spec.modules) {
     try {
       const r = await call(m.name, m.probeParams);
+      noteHelperCalled(spec, m.name);
       versions[m.name] = String(r?.EV_VERSION ?? '').trim() || '(none)';
-    } catch {
+    } catch (error) {
+      noteHelperCalled(spec, m.name, error);
       versions[m.name] = '(not callable)';
     }
   }
@@ -155,9 +160,9 @@ async function activeSourceVersions(
 
 function restartNote(spec: RfcHelperSpec): string {
   return (
-    'This server process had already called the helper, and the SAP NW RFC SDK caches ' +
+    `${RESTART_REQUIRED_MARKER} This server process had already called the helper, and the SAP NW RFC SDK caches ` +
     'function signatures per process: RESTART THE MCP SERVER (e.g. /mcp reconnect) before ' +
-    `using the ${spec.usedBy.toLowerCase()}. Do not run ${spec.setupTool} again.`
+    `using ${spec.usedBy}. Do not run ${spec.setupTool} again.`
   );
 }
 
@@ -188,14 +193,20 @@ export async function installRfcHelper(
     if (wasRewritten(spec) && !args?.force) {
       const active = await activeSourceVersions(context, spec);
       if (spec.modules.every((m) => active[m.name] === spec.version)) {
+        // Written by this process: a restart is needed only when the process
+        // may hold a signature from before the write (issue #6: a first
+        // install never does).
+        const stale = hasStaleSignature(spec);
         return json({
           success: true,
           changed: false,
-          restart_required: true,
+          restart_required: stale,
           function_group: spec.group,
           helper_version: spec.version,
           active_source_versions: active,
-          message: `The helper source on the system is already version ${spec.version}. ${restartNote(spec)}`,
+          message: stale
+            ? `The helper source on the system is already version ${spec.version}. ${restartNote(spec)}`
+            : `The ${spec.label} was installed by this server process and its active source is version ${spec.version}; nothing was changed.`,
         });
       }
     }
@@ -296,8 +307,9 @@ export async function installRfcHelper(
       }
       actions.push(`wrote and activated the source of ${m.name}`);
       // From here on this process may hold a stale signature or load of the
-      // helper — even if a later step fails.
-      markRewritten(spec);
+      // helper — even if a later step fails. A module that was not in TFDIR
+      // before this write cannot have a cached description (issue #6).
+      markRewritten(spec, m.name, tfdirBefore.has(m.name));
     }
 
     // Verify the end state, not the handlers' word for it.
@@ -334,9 +346,9 @@ export async function installRfcHelper(
     let restartRequired = false;
     let verifyNote: string;
     if (getRfcFunctionCaller(connection)) {
-      const cachedBefore = spec.modules.some(
-        (m) => before !== undefined && before[m.name] !== '(not callable)',
-      );
+      // Called before the rewrite in this process -> callRfcHelper refuses
+      // (a successful call on a cached signature would prove nothing).
+      const cachedBefore = hasStaleSignature(spec);
       const reset = (connection as { invalidateSession?: () => unknown })
         ?.invalidateSession;
       if (typeof reset === 'function') await reset.call(connection);
@@ -355,7 +367,7 @@ export async function installRfcHelper(
         verifyNote = `active source (version ${spec.version}) and TFDIR (RFC-enabled) verified. ${restartNote(spec)}`;
       }
     } else {
-      verifyNote = `active source and TFDIR verified; the RFC call itself could not be tested because this connection is HTTP — the ${spec.usedBy.toLowerCase()} need an RFC connection anyway`;
+      verifyNote = `active source and TFDIR verified; the RFC call itself could not be tested because this connection is HTTP (${spec.usedBy}: an RFC connection is required anyway)`;
     }
 
     return json({

@@ -529,6 +529,7 @@ Generated from code in `src/handlers/**` (not from docs).
 - `class_name` (string, required) - Class name (e.g., ZCL_TEST_CLASS_001). Class must already exist.
 - `lock_handle` (string, required) - Lock handle from LockClass operation. Required for update operation.
 - `source_code` (string, required) - Complete ABAP class source code including CLASS DEFINITION and IMPLEMENTATION sections.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 
 ---
 
@@ -868,11 +869,12 @@ Generated from code in `src/handlers/**` (not from docs).
 **Source:** `src/handlers/ddlx/low/handleUpdateMetadataExtension.ts`
 
 **Parameters:**
-- `lock_handle` (string, required) - Lock handle from LockObject. Required for update operation.
+- `lock_handle` (string, required) - Lock handle from LockObject.
 - `name` (string, required) - Metadata extension name (e.g., ZOK_C_TEST_0001). Metadata extension must already exist.
-- `session_id` (string, optional) - Session ID from GetSession. If not provided, a new session will be created.
-- `session_state` (object, optional) - Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.
+- `session_id` (string, optional) - Optional session ID from GetSession.
+- `session_state` (object, optional) - Session state from GetSession; needed with session_id.
 - `source_code` (string, required) - Complete metadata extension source code.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 
 ---
 
@@ -1316,10 +1318,11 @@ Generated from code in `src/handlers/**` (not from docs).
 
 **Parameters:**
 - `interface_name` (string, required) - Interface name (e.g., ZIF_TEST_INTERFACE). Interface must already exist.
-- `lock_handle` (string, required) - Lock handle from LockObject. Required for update operation.
-- `session_id` (string, optional) - Session ID from GetSession. If not provided, a new session will be created.
-- `session_state` (object, optional) - Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.
+- `lock_handle` (string, required) - Lock handle from LockObject.
+- `session_id` (string, optional) - Optional session ID from GetSession.
+- `session_state` (object, optional) - Session state from GetSession; needed with session_id.
 - `source_code` (string, required) - Complete ABAP interface source code.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 
 ---
 
@@ -1556,11 +1559,12 @@ Generated from code in `src/handlers/**` (not from docs).
 **Source:** `src/handlers/program/low/handleUpdateProgram.ts`
 
 **Parameters:**
-- `lock_handle` (string, required) - Lock handle from LockObject. Required for update operation.
+- `lock_handle` (string, required) - Lock handle from LockObject.
 - `program_name` (string, required) - Program name (e.g., Z_TEST_PROGRAM). Program must already exist.
-- `session_id` (string, optional) - Session ID from GetSession. If not provided, a new session will be created.
-- `session_state` (object, optional) - Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.
+- `session_id` (string, optional) - Optional session ID from GetSession.
+- `session_state` (object, optional) - Session state from GetSession; needed with session_id.
 - `source_code` (string, required) - Complete ABAP program source code.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 
 ---
 
@@ -1707,10 +1711,11 @@ Generated from code in `src/handlers/**` (not from docs).
 
 **Parameters:**
 - `ddl_code` (string, required) - Complete DDL source code for the structure definition.
-- `lock_handle` (string, required) - Lock handle from LockObject. Required for update operation.
-- `session_id` (string, optional) - Session ID from GetSession. If not provided, a new session will be created.
-- `session_state` (object, optional) - Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.
+- `lock_handle` (string, required) - Lock handle from LockObject.
+- `session_id` (string, optional) - Optional session ID from GetSession.
+- `session_state` (object, optional) - Session state from GetSession; needed with session_id.
 - `structure_name` (string, required) - Structure name (e.g., ZZ_S_TEST_001). Structure must already exist.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 
 ---
 
@@ -1999,15 +2004,16 @@ Generated from code in `src/handlers/**` (not from docs).
 
 <a id="updateviewlow-low-level-view"></a>
 #### UpdateViewLow (Low-Level / View)
-**Description:** [low-level] Update DDL source code of an existing CDS View or Classic View. Requires lock handle from LockObject. - use UpdateView (high-level) for full workflow with lock/unlock/activate.
+**Description:** [low-level] Update DDL source code of an existing CDS View or Classic View. Needs a lock handle from LockObject; UpdateView (high-level) does lock/update/unlock/activate.
 
 **Source:** `src/handlers/view/low/handleUpdateView.ts`
 
 **Parameters:**
 - `ddl_source` (string, required) - Complete DDL source code. CDS: include @AbapCatalog.sqlViewName and other annotations. Classic: plain 'define view' statement.
-- `lock_handle` (string, required) - Lock handle from LockObject. Required for update operation.
-- `session_id` (string, optional) - Session ID from GetSession. If not provided, a new session will be created.
-- `session_state` (object, optional) - Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.
+- `lock_handle` (string, required) - Lock handle from LockObject.
+- `session_id` (string, optional) - Optional session ID from GetSession.
+- `session_state` (object, optional) - Session state from GetSession; needed with session_id.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 - `view_name` (string, required) - View name (e.g., ZOK_R_TEST_0002). View must already exist.
 
 ---
@@ -2041,4 +2047,4 @@ Generated from code in `src/handlers/**` (not from docs).
 
 ---
 
-*Last updated: 2026-11-09*
+*Last updated: 2026-11-17*

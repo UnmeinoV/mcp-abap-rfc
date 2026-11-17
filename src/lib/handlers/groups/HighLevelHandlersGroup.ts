@@ -165,6 +165,14 @@ import {
   handleActivateDataElement,
 } from '../../../handlers/data_element/low/handleActivateDataElement';
 import {
+  TOOL_DEFINITION as DeployDdic_Tool,
+  handleDeployDdic,
+} from '../../../handlers/ddic/high/handleDeployDdic';
+import {
+  handleSetupDdicHelper,
+  TOOL_DEFINITION as SetupDdicHelper_Tool,
+} from '../../../handlers/ddic/high/handleSetupDdicHelper';
+import {
   TOOL_DEFINITION as CheckMetadataExtension_Tool,
   handleCheckMetadataExtension,
 } from '../../../handlers/ddlx/high/handleCheckMetadataExtension';
@@ -256,6 +264,26 @@ import {
   TOOL_DEFINITION as GenerateRepoObjects_Tool,
   handleGenerateRepoObjects,
 } from '../../../handlers/generator/high/handleGenerateRepoObjects';
+import {
+  TOOL_DEFINITION as AddGuiStatusButton_Tool,
+  handleAddGuiStatusButton,
+} from '../../../handlers/gui_status/high/handleAddGuiStatusButton';
+import {
+  TOOL_DEFINITION as CopyGuiStatus_Tool,
+  handleCopyGuiStatus,
+} from '../../../handlers/gui_status/high/handleCopyGuiStatus';
+import {
+  TOOL_DEFINITION as DeleteGuiStatus_Tool,
+  handleDeleteGuiStatus,
+} from '../../../handlers/gui_status/high/handleDeleteGuiStatus';
+import {
+  handleRemoveGuiStatusButton,
+  TOOL_DEFINITION as RemoveGuiStatusButton_Tool,
+} from '../../../handlers/gui_status/high/handleRemoveGuiStatusButton';
+import {
+  handleSetupGuiStatusHelper,
+  TOOL_DEFINITION as SetupGuiStatusHelper_Tool,
+} from '../../../handlers/gui_status/high/handleSetupGuiStatusHelper';
 import {
   TOOL_DEFINITION as CheckInterface_Tool,
   handleCheckInterface,
@@ -542,6 +570,10 @@ import {
   handleMergeTransport,
   TOOL_DEFINITION as MergeTransport_Tool,
 } from '../../../handlers/transport/high/handleMergeTransport';
+import {
+  handleMoveTransportObjects,
+  TOOL_DEFINITION as MoveTransportObjects_Tool,
+} from '../../../handlers/transport/high/handleMoveTransportObjects';
 import {
   handleReleaseTransport,
   TOOL_DEFINITION as ReleaseTransport_Tool,
@@ -884,6 +916,10 @@ export class HighLevelHandlersGroup extends BaseHandlerGroup {
         handler: withContext(handleMergeTransport),
       },
       {
+        toolDefinition: MoveTransportObjects_Tool,
+        handler: withContext(handleMoveTransportObjects),
+      },
+      {
         toolDefinition: UpdateTranslation_Tool,
         handler: withContext(handleUpdateTranslation),
       },
@@ -904,12 +940,40 @@ export class HighLevelHandlersGroup extends BaseHandlerGroup {
         handler: withContext(handleCreateTransaction),
       },
       {
+        toolDefinition: AddGuiStatusButton_Tool,
+        handler: withContext(handleAddGuiStatusButton),
+      },
+      {
+        toolDefinition: CopyGuiStatus_Tool,
+        handler: withContext(handleCopyGuiStatus),
+      },
+      {
+        toolDefinition: RemoveGuiStatusButton_Tool,
+        handler: withContext(handleRemoveGuiStatusButton),
+      },
+      {
+        toolDefinition: DeleteGuiStatus_Tool,
+        handler: withContext(handleDeleteGuiStatus),
+      },
+      {
+        toolDefinition: SetupGuiStatusHelper_Tool,
+        handler: withContext(handleSetupGuiStatusHelper),
+      },
+      {
         toolDefinition: DeleteTransaction_Tool,
         handler: withContext(handleDeleteTransaction),
       },
       {
         toolDefinition: SetupTransactionHelper_Tool,
         handler: withContext(handleSetupTransactionHelper),
+      },
+      {
+        toolDefinition: DeployDdic_Tool,
+        handler: withContext(handleDeployDdic),
+      },
+      {
+        toolDefinition: SetupDdicHelper_Tool,
+        handler: withContext(handleSetupDdicHelper),
       },
       {
         toolDefinition: GenerateRepoObjects_Tool,

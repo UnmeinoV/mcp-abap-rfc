@@ -13,6 +13,7 @@ import {
   evaluateActivation,
 } from '../../../lib/adtMessages';
 import { activateAdtObjects, runLocked } from '../../../lib/adtObjectOps';
+import { requestForCorrNr } from '../../../lib/corrNrRequest';
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
 import {
   containsCjk,
@@ -58,7 +59,9 @@ longer. Text symbols hold at most 132 characters, selection texts 30. A selectio
 switches its Dictionary reference off unless you pass ddic_reference: true.
 
 activate defaults to true. If an inactive version was already pending, it is activated together with
-this change and a warning says so. transport_request is required for a transportable program.`,
+this change and a warning says so. transport_request is required for a transportable program; a
+TASK is accepted and sent as its request (E070-STRKORR): this resource checks corrNr against the
+request and refuses a task with CTS_WBO_API/020 (measured). CTS records into your task.`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -189,10 +192,19 @@ export async function handleUpdateTextElements(
       );
     }
 
+    // The resource checks corrNr against the REQUEST (dark CTS API, lock holder
+    // = req_header-trkorr): a task is refused with CTS_WBO_API/020. Send its
+    // request — see lib/corrNrRequest.ts.
+    const corr = transport
+      ? await requestForCorrNr(connection, transport)
+      : undefined;
+    if (corr?.warning) warnings.push(corr.warning);
+    if (corr) steps.push('resolve_transport');
+
     const url = textElementsUrl(program);
     await runLocked(connection, url, async (lockHandle) => {
       const params: Record<string, string> = { lockHandle };
-      if (transport) params.corrNr = transport;
+      if (corr) params.corrNr = corr.send;
       const parts: Array<[keyof typeof TEXT_ELEMENT_MEDIA, string]> = [];
       if (targetSymbols)
         parts.push(['symbols', serializeSymbols(targetSymbols)]);
@@ -299,6 +311,16 @@ export async function handleUpdateTextElements(
                 : {}),
               symbol_count: finalPool.symbols.length,
               transport_request: transport ?? null,
+              ...(corr
+                ? {
+                    corr_nr_sent: corr.send,
+                    ...(corr.taskOf
+                      ? {
+                          transport_note: `${corr.given} is a task of ${corr.taskOf}; corrNr=${corr.taskOf} was sent (this resource accepts only the request) and CTS records into your task.`,
+                        }
+                      : {}),
+                  }
+                : {}),
               steps_completed: steps,
               ...(warnings.length ? { warnings } : {}),
               message: activated

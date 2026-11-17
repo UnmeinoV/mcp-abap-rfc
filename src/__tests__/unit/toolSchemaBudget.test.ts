@@ -48,8 +48,13 @@ const PER_TOOL_BUDGET = 1500;
  * Raised 2026-11-05 for two genuinely new tools (GetTextElements, UpdateTextElements).
  * Raised 2026-11-05 for three genuinely new tools (CreateTransaction,
  * DeleteTransaction, SetupTransactionHelper).
+ * Raised 2026-11-12 for two genuinely new tools (DeployDdic, SetupDdicHelper).
+ * Raised 2026-11-13 for three genuinely new tools (GetGuiStatus,
+ * AddGuiStatusButton, SetupGuiStatusHelper).
+ * Raised 2026-11-13 for one genuinely new tool (CopyGuiStatus), then for two more
+ * (RemoveGuiStatusButton, DeleteGuiStatus; 431_135 measured with them).
  */
-const TOTAL_BUDGET = 424_000;
+const TOTAL_BUDGET = 431_500;
 
 /**
  * Tools over budget as of 2026-08-26. NAMES MAY ONLY BE REMOVED FROM THIS LIST.

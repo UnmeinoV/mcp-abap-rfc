@@ -3,7 +3,7 @@
 Generated from code in `src/handlers/**` (not from docs).
 
 - Level: Read-Only
-- Total tools: 79
+- Total tools: 80
 
 ## Navigation
 
@@ -30,6 +30,8 @@ Generated from code in `src/handlers/**` (not from docs).
     - [ReadFunctionGroup](#readfunctiongroup-read-only-function-group)
   - [Function Module](#read-only-function-module)
     - [ReadFunctionModule](#readfunctionmodule-read-only-function-module)
+  - [Gui Status](#read-only-gui-status)
+    - [GetGuiStatus](#getguistatus-read-only-gui-status)
   - [Include](#read-only-include)
     - [GetInclude](#getinclude-read-only-include)
     - [GetIncludesList](#getincludeslist-read-only-include)
@@ -300,6 +302,24 @@ Generated from code in `src/handlers/**` (not from docs).
 - `function_group_name` (string, required) - Function group name containing the function module (e.g., Z_MY_FG).
 - `function_module_name` (string, required) - Function module name (e.g., Z_MY_FM).
 - `version` (string, optional (default: active)) - Version to read: "active" (default) or "inactive".
+
+---
+
+<a id="read-only-gui-status"></a>
+### Read-Only / Gui Status
+
+<a id="getguistatus-read-only-gui-status"></a>
+#### GetGuiStatus (Read-Only / Gui Status)
+**Description:** [read-only] Read the GUI interface of a program (SE41): its GUI statuses and titles, and for one status its application toolbar (slot, function key, function code, text, icon, active), its function keys and its active functions. Needs an RFC connection (no helper).
+
+**Notes:** Read with RS_CUA_INTERNAL_FETCH, the module SE41 itself uses — RFC-enabled, so no Z helper is needed; ADT has no GUI-status resource. Without status the answer lists the statuses (type, text, toolbar size, key-set sharing) and titles; with status it gives that status in full. Function keys are numbered as SAP does: 01-12 F1-F12, 13-24 Shift-F1..F12, 25-36 Ctrl-F1..F12, 37-48 Ctrl-Shift-F1..F12; higher numbers are SAP standard keys (Ctrl-F, Ctrl-P, …). A toolbar slot whose key is "S" is a separator. shared_key_set_with names statuses that use the SAME function key set: a key or button added there appears in all of them. Texts are in language (default: the interface's own language, EUDB-LANGU = the original language).
+
+**Source:** `src/handlers/gui_status/readonly/handleGetGuiStatus.ts`
+
+**Parameters:**
+- `language` (string, optional) - Text language: ZH / EN or 1 / E. Default: original.
+- `program_name` (string, required) - Program, e.g. ZMY_REPORT.
+- `status` (string, optional) - One GUI status in full (omit for the list).
 
 ---
 
@@ -1315,4 +1335,4 @@ Generated from code in `src/handlers/**` (not from docs).
 
 ---
 
-*Last updated: 2026-11-09*
+*Last updated: 2026-11-17*

@@ -34,13 +34,17 @@
 - 不提供 `CallIcfService`，依据实机测量：RFC 下每个请求都经 ADT 的 `SADT_REST_RFC_ENDPOINT`，只能到 ADT REST 处理器，到不了任意 ICF。`GET /sap/opu/odata/iwfnd/catalogservice;v=2/` 答 `404 text/plain "No application class found for URI: …"`，是 ADT REST 分发器的话，不是 OData 服务的。ICF 调用需要 HTTP 连接，本服务不支持。
 - 平台：只有 linux-x64 实测；linux-arm64、macOS x64、Windows 未实测，不许写成已验证；macOS arm64 拒绝（SDK 只有 x86_64）。
 
-## RFC 助手（SAP 上的 `ZMCP_LXE`、`ZMCP_TRAN`）
+## RFC 助手（SAP 上的 `ZMCP_LXE`、`ZMCP_TRAN`、`ZMCP_DDIC`、`ZMCP_CUA`）
 
-ABAP 源码、函数组/函数名、`LXE_HELPER_VERSION`、TRAN 助手版本都是定死的，源码里注释的旧工具名也不改：源码任何变化都要升版本，而同一系统上别的安装会比对版本号，判为过期或拒绝降级。真要改助手，先决定是改名成新的函数组（如 `ZMCP_RFC_*`），还是协调所有使用方一起升版本。
+四个助手的 ABAP 源码与 mcp-abap-adt 主干逐字节相同（2026-11-17 同步到 `f5838bf6`）：LXE v4、TRAN v2、DDIC v2、CUA v4。
+
+ABAP 源码、函数组/函数名、各助手的版本号都是定死的，源码里注释的旧工具名也不改：源码任何变化都要升版本，而同一系统上别的安装会比对版本号，判为过期或拒绝降级。真要改助手，先决定是改名成新的函数组（如 `ZMCP_RFC_*`），还是协调所有使用方一起升版本。
+
+签名缓存的判定（`rfcHelper.ts`）按模块记：调用返回过结果的算已缓存；调用失败（`FU_NOT_FOUND` 以外）的，只有安装器写入前在 TFDIR 里查到该模块才算。所以第一次安装不要求重启，升级已调用过的助手仍要求重启并拒绝调用。要求重启的文字都带 `[MCP_RESTART_REQUIRED]`。`rfcHelperFirstInstall.test.ts` 钉住。
 
 ## 测试与验证
 
-- 单元测试：`npx jest --testPathIgnorePatterns='integration' --testPathIgnorePatterns='__tests__/admin/'`；脚本测试：`npm run test:scripts`。当前：80 suites / 867 tests 全过；脚本测试 11 项全过；`npm run test:check`（测试代码的 tsc）0 错误，pre-commit 也跑它。
+- 单元测试：`npx jest --testPathIgnorePatterns='integration' --testPathIgnorePatterns='__tests__/admin/'`；脚本测试：`npm run test:scripts`。当前：89 suites / 1054 tests 全过；脚本测试 11 项全过；`npm run test:check`（测试代码的 tsc）0 错误，pre-commit 也跑它。
 - 集成测试套件没有带过来。实机验证用 `node tools/smoke-rfc.mjs --env-path=<file> [--second-client=<n>]`（5 项只读：GetSession 版本比对 package.json、T000 非空且含默认集团、第二个 client（只在给了 `--second-client` 时跑，否则 SKIP）、GetClass、GetTranslation（需已装 `ZMCP_LXE`））。旧版脚本经 SAProuter 实机 5/5 通过；当前脚本未实机跑过。
-- `npm run docs:tools` 重新生成 `docs/user-guide/AVAILABLE_TOOLS*.md`（当前 377 个工具）。工具 schema 的字符预算见 `toolSchemaBudget.test.ts`：说明文字放进 `notes`（必须是模板字符串），预算超标名单只许缩短。
+- `npm run docs:tools` 重新生成 `docs/user-guide/AVAILABLE_TOOLS*.md`（当前 386 个工具）。工具 schema 的字符预算见 `toolSchemaBudget.test.ts`：说明文字放进 `notes`（必须是模板字符串），预算超标名单只许缩短。
 - 仓库里不得出现真实系统的标识（`shippedIdentifierHygiene.test.ts` 按 `<SID>K<6位数字>` 形状扫描）、env 文件、密码、`rfc*.trc`、日志。

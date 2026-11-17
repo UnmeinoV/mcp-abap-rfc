@@ -85,14 +85,18 @@ SAP_CLIENTS=100,800
 
 ## SAP 端助手
 
-两组工具需要 SAP 上一个支持 RFC 的 Z 函数组，各自有一个安装工具：
+四组工具需要 SAP 上一个支持 RFC 的 Z 函数组，各自有一个安装工具：
 
 | 工具 | 助手 | 安装工具 |
 |---|---|---|
-| `GetTranslation` / `UpdateTranslation` / `AddTranslationToTransport` | `ZMCP_LXE` | `SetupTranslationHelper` |
+| `GetTranslation` / `UpdateTranslation` / `AddTranslationToTransport` / `MoveTransportObjects`（同一请求内移动时） | `ZMCP_LXE` | `SetupTranslationHelper` |
 | `CreateTransaction` / `DeleteTransaction` | `ZMCP_TRAN` | `SetupTransactionHelper` |
+| `DeployDdic` | `ZMCP_DDIC` | `SetupDdicHelper` |
+| `AddGuiStatusButton` / `RemoveGuiStatusButton` / `CopyGuiStatus` / `DeleteGuiStatus`（`GetGuiStatus` 不需要助手） | `ZMCP_CUA` | `SetupGuiStatusHelper` |
 
 安装助手会往系统写 Z 代码，需先征得系统负责人同意。同一系统上的其他工具可能依赖助手的版本号，不要随意改助手源码或版本。
+
+安装工具升级了本进程已经调用过的助手时，结果里有 `restart_required: true`，该助手的工具在重启服务之前一律拒绝（SAP NW RFC SDK 按进程缓存函数签名）。这类文字都带标记 `[MCP_RESTART_REQUIRED]`。第一次安装不需要重启。
 
 ## 开发
 

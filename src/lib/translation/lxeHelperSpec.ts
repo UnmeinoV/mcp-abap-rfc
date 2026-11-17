@@ -7,6 +7,9 @@ import type { RfcHelperSpec } from '../rfcHelper/rfcHelper';
 import {
   LXE_HELPER_GROUP,
   LXE_HELPER_GROUP_DESCRIPTION,
+  LXE_HELPER_MOVE,
+  LXE_HELPER_MOVE_DESCRIPTION,
+  LXE_HELPER_MOVE_SOURCE,
   LXE_HELPER_READ,
   LXE_HELPER_READ_DESCRIPTION,
   LXE_HELPER_READ_SOURCE,
@@ -57,6 +60,17 @@ export const LXE_HELPER_SPEC: RfcHelperSpec = {
       probeParams: {
         IV_TARGET_LANG: 'enUS',
         IV_REQUEST: '',
+        IT_OBJECTS: [],
+      },
+    },
+    {
+      name: LXE_HELPER_MOVE,
+      description: LXE_HELPER_MOVE_DESCRIPTION,
+      source: LXE_HELPER_MOVE_SOURCE,
+      // An empty IT_OBJECTS is refused before any request is read.
+      probeParams: {
+        IV_FROM: '',
+        IV_TO: '',
         IT_OBJECTS: [],
       },
     },

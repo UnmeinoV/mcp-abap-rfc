@@ -7,6 +7,7 @@
 
 import { createAdtClient } from '../../../lib/clients';
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
+import { resolveLowTransport } from '../../../lib/lowLockTransport';
 import {
   type AxiosResponse,
   isCloudConnection,
@@ -34,18 +35,20 @@ export const TOOL_DEFINITION = {
       },
       lock_handle: {
         type: 'string',
+        description: 'Lock handle from LockObject.',
+      },
+      transport_request: {
+        type: 'string',
         description:
-          'Lock handle from LockObject. Required for update operation.',
+          'Transport request/task (corrNr) for a transportable package; omit for $TMP.',
       },
       session_id: {
         type: 'string',
-        description:
-          'Session ID from GetSession. If not provided, a new session will be created.',
+        description: 'Optional session ID from GetSession.',
       },
       session_state: {
         type: 'object',
-        description:
-          'Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.',
+        description: 'Session state from GetSession; needed with session_id.',
         properties: {
           cookies: { type: 'string' },
           csrf_token: { type: 'string' },
@@ -58,6 +61,7 @@ export const TOOL_DEFINITION = {
 } as const;
 
 interface UpdateProgramArgs {
+  transport_request?: string;
   program_name: string;
   source_code: string;
   lock_handle: string;
@@ -105,6 +109,12 @@ export async function handleUpdateProgram(
     }
 
     const client = createAdtClient(connection, logger);
+    // The caller's argument, else the CORRNR SAP returned to the Lock*Low
+    // call that produced this handle (issue #3).
+    const { transportRequest, source: transportSource } = resolveLowTransport(
+      (args as { transport_request?: string }).transport_request,
+      (args as { lock_handle?: string }).lock_handle,
+    );
 
     // Restore session state if provided
     if (session_id && session_state) {
@@ -117,12 +127,14 @@ export async function handleUpdateProgram(
 
     try {
       // Update program with source code
-      const updateState = await client
-        .getProgram()
-        .update(
-          { programName: programName, sourceCode: source_code },
-          { lockHandle: lock_handle },
-        );
+      const updateState = await client.getProgram().update(
+        {
+          programName: programName,
+          sourceCode: source_code,
+          transportRequest: transportRequest,
+        },
+        { lockHandle: lock_handle },
+      );
       const updateResult = updateState.updateResult;
 
       if (!updateResult) {
@@ -139,6 +151,10 @@ export async function handleUpdateProgram(
         data: JSON.stringify(
           {
             success: true,
+            transport_request: transportRequest ?? null,
+            ...(transportSource === 'lock'
+              ? { transport_request_source: 'lock (CORRNR)' }
+              : {}),
             program_name: programName,
             session_id: session_id || null,
             session_state: null, // Session state is not persisted by this server,

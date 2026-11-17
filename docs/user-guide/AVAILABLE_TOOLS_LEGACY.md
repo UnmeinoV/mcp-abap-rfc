@@ -5,9 +5,9 @@ Generated from code in `src/handlers/**` (not from docs).
 Tools available on legacy SAP systems (BASIS < 7.50).
 Legacy systems support a subset of tools — primarily Class, Interface, View, Program, Function Group/Module, Package (read/update/delete), Include, Unit Test, and common utilities.
 
-- Total tools: 163
-- Read-Only: 18
-- High-Level: 82
+- Total tools: 172
+- Read-Only: 19
+- High-Level: 90
 - Low-Level: 63
 
 ## Navigation
@@ -21,6 +21,8 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
     - [ReadFunctionGroup](#readfunctiongroup-read-only-function-group)
   - [Function Module](#read-only-function-module)
     - [ReadFunctionModule](#readfunctionmodule-read-only-function-module)
+  - [Gui Status](#read-only-gui-status)
+    - [GetGuiStatus](#getguistatus-read-only-gui-status)
   - [Include](#read-only-include)
     - [GetInclude](#getinclude-read-only-include)
     - [GetIncludesList](#getincludeslist-read-only-include)
@@ -71,6 +73,9 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
     - [HandlerDelete](#handlerdelete-high-level-compact)
     - [HandlerGet](#handlerget-high-level-compact)
     - [HandlerUpdate](#handlerupdate-high-level-compact)
+  - [Ddic](#high-level-ddic)
+    - [DeployDdic](#deployddic-high-level-ddic)
+    - [SetupDdicHelper](#setupddichelper-high-level-ddic)
   - [Function](#high-level-function)
     - [CheckFunctionGroup](#checkfunctiongroup-high-level-function)
     - [CheckFunctionModule](#checkfunctionmodule-high-level-function)
@@ -84,6 +89,12 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
   - [Function Module](#high-level-function-module)
     - [DeleteFunctionModule](#deletefunctionmodule-high-level-function-module)
     - [GetFunctionModule](#getfunctionmodule-high-level-function-module)
+  - [Gui Status](#high-level-gui-status)
+    - [AddGuiStatusButton](#addguistatusbutton-high-level-gui-status)
+    - [CopyGuiStatus](#copyguistatus-high-level-gui-status)
+    - [DeleteGuiStatus](#deleteguistatus-high-level-gui-status)
+    - [RemoveGuiStatusButton](#removeguistatusbutton-high-level-gui-status)
+    - [SetupGuiStatusHelper](#setupguistatushelper-high-level-gui-status)
   - [Interface](#high-level-interface)
     - [CheckInterface](#checkinterface-high-level-interface)
     - [CreateInterface](#createinterface-high-level-interface)
@@ -119,6 +130,8 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
     - [AddTranslationToTransport](#addtranslationtotransport-high-level-translation)
     - [SetupTranslationHelper](#setuptranslationhelper-high-level-translation)
     - [UpdateTranslation](#updatetranslation-high-level-translation)
+  - [Transport](#high-level-transport)
+    - [MoveTransportObjects](#movetransportobjects-high-level-transport)
   - [Unit Test](#high-level-unit-test)
     - [CreateCdsUnitTest](#createcdsunittest-high-level-unit-test)
     - [CreateUnitTest](#createunittest-high-level-unit-test)
@@ -300,6 +313,26 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 - `function_group_name` (string, required) - Function group name containing the function module (e.g., Z_MY_FG).
 - `function_module_name` (string, required) - Function module name (e.g., Z_MY_FM).
 - `version` (string, optional (default: active)) - Version to read: "active" (default) or "inactive".
+
+---
+
+<a id="read-only-gui-status"></a>
+### Read-Only / Gui Status
+
+<a id="getguistatus-read-only-gui-status"></a>
+#### GetGuiStatus (Read-Only / Gui Status)
+**Description:** [read-only] Read the GUI interface of a program (SE41): its GUI statuses and titles, and for one status its application toolbar (slot, function key, function code, text, icon, active), its function keys and its active functions. Needs an RFC connection (no helper).
+
+**Notes:** Read with RS_CUA_INTERNAL_FETCH, the module SE41 itself uses — RFC-enabled, so no Z helper is needed; ADT has no GUI-status resource. Without status the answer lists the statuses (type, text, toolbar size, key-set sharing) and titles; with status it gives that status in full. Function keys are numbered as SAP does: 01-12 F1-F12, 13-24 Shift-F1..F12, 25-36 Ctrl-F1..F12, 37-48 Ctrl-Shift-F1..F12; higher numbers are SAP standard keys (Ctrl-F, Ctrl-P, …). A toolbar slot whose key is "S" is a separator. shared_key_set_with names statuses that use the SAME function key set: a key or button added there appears in all of them. Texts are in language (default: the interface's own language, EUDB-LANGU = the original language).
+
+**Source:** `src/handlers/gui_status/readonly/handleGetGuiStatus.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `language` (string, optional) - Text language: ZH / EN or 1 / E. Default: original.
+- `program_name` (string, required) - Program, e.g. ZMY_REPORT.
+- `status` (string, optional) - One GUI status in full (omit for the list).
 
 ---
 
@@ -970,6 +1003,44 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 
 ---
 
+<a id="high-level-ddic"></a>
+### High-Level / Ddic
+
+<a id="deployddic-high-level-ddic"></a>
+#### DeployDdic (High-Level / Ddic)
+**Description:** Create MANY / DEEPLY NESTED DDIC structures and table types in ONE call from a spec (schema ddic-deploy/1): the order is computed from the references, every object is activated and read back. Use it for interface structures with several levels (header -> items table -> sub-items ...). For one or two objects, or to change an existing one, CreateStructure / CreateTableType / UpdateStructure are the simpler route. NEEDS an RFC connection and the helper ZMCP_DDIC — if missing, the error says to run SetupDdicHelper (ask the user first).
+
+**Notes:** When to use which: both routes stay. DeployDdic pays off when a tree of objects must exist together — each object of a nested structure has to be active before the next can reference it, so through ADT that is 2-3 serial requests per object, plus DDL annotations (QUAN/CURR references) and the build order to get right one by one. Measured on one 14-object, 7-level spec: one DeployDdic-style call created and read back all 14; an agent using the ADT tools stopped at 8 of 14. For a single structure or a field added to an existing one, the ADT tools are simpler and need no helper.  Spec: {"schema":"ddic-deploy/1","objects":[...]}; each object {kind:"structure"|"tableType", name, label}. A structure has fields: {name, type} where type is a data element, structure or table type (which one is looked up in the DDIC); or {name, dataType, length, decimals?, label} for a built-in type; {name:".INCLUDE", type:<structure>} includes a structure; a CURR/QUAN field needs refTable + refField (the reference table may be the structure itself). A table type has rowType (structure or data element): standard table, standard key, non-unique. The order of the objects does not matter.  Refused BEFORE anything is written: an object outside Z*/Y*, a duplicate, a missing label/fields/ rowType, an object that already exists (create only), a reference that is neither in the spec nor an active DDIC type, a circular reference, a CURR/QUAN field without reference, a missing package, a transportable package without transport_request, or a request that is missing, released, or not a workbench request/task. dry_run runs every check, reports the computed order and creates nothing.  Written object by object (RS_CORR_INSERT, DDIF_TABL_PUT / DDIF_TTYP_PUT, DDIF_*_ACTIVATE); a failure stops there, objects created before it are KEPT and named. Verified afterwards: DD02L / DD40L (active, no inactive version left), TADIR package and, with a request, E071.
+
+**Source:** `src/handlers/ddic/high/handleDeployDdic.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `dry_run` (boolean, optional) - Check and order only.
+- `package_name` (string, required) - 
+- `spec` (object, required) - The ddic-deploy/1 spec as a JSON object.
+- `transport_request` (string, optional) - 
+
+---
+
+<a id="setupddichelper-high-level-ddic"></a>
+#### SetupDdicHelper (High-Level / Ddic)
+**Description:** One-time install of the DDIC deploy helper that DeployDdic needs: function group ZMCP_DDIC with one RFC-enabled module (Z_MCP_DDIC_DEPLOY), source shipped with this server. WRITES Z CODE INTO THE SAP SYSTEM — ask the user before calling it. Default package $TMP (no transport). Safe to re-run.
+
+**Notes:** Only needed for DeployDdic (deeply nested structures / many DDIC objects in one call). CreateStructure, CreateTableType and UpdateStructure work without it. Same installer as SetupTransactionHelper: an up-to-date helper is left alone unless force:true, a newer one is never downgraded, a same-named module in another function group is refused; verified by TFDIR (RFC-enabled), the ACTIVE source read back through ADT, and an RFC call on a fresh ABAP session. package_name other than $TMP needs transport_request.
+
+**Source:** `src/handlers/ddic/high/handleSetupDdicHelper.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `force` (boolean, optional) - Rewrite the source even when the installed helper is up to date. Default false.
+- `package_name` (string, optional) - Package for a NEW function group. Default $TMP.
+- `transport_request` (string, optional) - Transport request, required for a non-$TMP package.
+
+---
+
 <a id="high-level-function"></a>
 ### High-Level / Function
 
@@ -1128,6 +1199,108 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 - `function_group_name` (string, optional) - Function group containing the module (e.g., Z_MY_FUNCTIONGROUP). OPTIONAL: when 
 - `function_module_name` (string, required) - FunctionModule name (e.g., Z_MY_FUNCTIONMODULE).
 - `version` (string, optional (default: active)) - Version to read: "active" (default) for deployed version, "inactive" for modified but not activated version.
+
+---
+
+<a id="high-level-gui-status"></a>
+### High-Level / Gui Status
+
+<a id="addguistatusbutton-high-level-gui-status"></a>
+#### AddGuiStatusButton (High-Level / Gui Status)
+**Description:** Add a NEW function code as a button on the application toolbar of an existing GUI status of a program (SE41): text, optional icon and quick info, a free function key (chosen if omitted) and the next toolbar slot; verified by reading the active interface back. NEEDS an RFC connection and the helper ZMCP_CUA — if missing, the error says to run SetupGuiStatusHelper (ask the user first).
+
+**Notes:** Only the GUI part: the program must still handle the new code (CASE sy-ucomm / the ALV user_command). Follows SE41's save path inside the helper: RS_ACCESS_PERMISSION (authority + lock) -> RS_CUA_INTERNAL_FETCH -> checks -> RS_CORR_INSERT -> RS_CUA_INTERNAL_WRITE (inactive when the working area is active, then RS_WORKING_OBJECTS_ACTIVATE) -> read back.  Refused BEFORE anything is written: a program outside Z*/Y*/ns, not executable / module pool, or without a GUI interface; a status that does not exist, is a context menu, or SHARES its function key set with another status (the button would appear there too — shared_key_set_with in GetGuiStatus; CopyGuiStatus to a new name gives a status its own key set); a function code that already exists in the interface (this adds a NEW one); an occupied or unusable function_key (allowed 05-09, 13-48; default: first free of 13-48 without 15); a full toolbar (35 slots); an unknown icon; a pending inactive version of the interface; a transportable program without transport_request or with a released / non-workbench request.  function_code: A-Z, 0-9, _ (codes starting with & are ALV's own). The text goes into the program's ORIGINAL language (reported as language); other languages show no text until translated. The button is appended after the last used slot. dry_run runs every check and writes nothing.
+
+**Source:** `src/handlers/gui_status/high/handleAddGuiStatusButton.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `dry_run` (boolean, optional) - Check only.
+- `function_code` (string, required) - New code, e.g. ZEXPORT.
+- `function_key` (string, optional (default: first free).)) - 05-09 or 13-48 (default: first free).
+- `icon` (string, optional) - Icon name, e.g. ICON_EXPORT.
+- `icon_text` (string, optional) - Text beside the icon.
+- `program_name` (string, required) - 
+- `quick_info` (string, optional) - Tooltip, max 60.
+- `status` (string, required) - Existing GUI status.
+- `text` (string, required) - Function text, max 40.
+- `transport_request` (string, optional) - 
+
+---
+
+<a id="copyguistatus-high-level-gui-status"></a>
+#### CopyGuiStatus (High-Level / Gui Status)
+**Description:** Copy a GUI status (SE41 copy) from any program into a customer program under a new name — e.g. SAPLKKBL STANDARD_FULLSCREEN for an ALV toolbar of your own. The copy gets its own key set and toolbar; verified by reading both back. NEEDS an RFC connection and the helper ZMCP_CUA — if missing, the error says to run SetupGuiStatusHelper (ask the user first).
+
+**Notes:** Runs SE41's own copy, RS_CUA_COPY_STA without dialogs: the copy gets its OWN function key set, toolbar and menu bar (so it shares nothing with other statuses and AddGuiStatusButton can extend it); a function code the target already has with other attributes gets an additional text, the target's existing texts are not overwritten. A target program without any GUI interface yet is fine (the interface is created). Texts are copied in the TARGET's original language: functions the source has no text for in that language are copied without text (warned, with the count); OTHER languages are not copied — the copy shows no text there until translated (measured).  Refused BEFORE anything is written: a target outside Z*/Y*/ns or not executable / module pool, a target status that already exists, a source program or status that does not exist, a pending inactive interface of the target, a transportable target without transport_request or with a released / non-workbench request. dry_run runs every check and writes nothing. Then use SET PF-STATUS '<target_status>' (or for ALV: i_callback_pf_status_set) in the program; it must handle the function codes it does not leave to ALV.
+
+**Source:** `src/handlers/gui_status/high/handleCopyGuiStatus.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `dry_run` (boolean, optional) - Check only.
+- `source_program` (string, required) - Program holding the status, e.g. SAPLKKBL.
+- `source_status` (string, required) - Status to copy, e.g. STANDARD_FULLSCREEN.
+- `target_program` (string, required) - Customer program.
+- `target_status` (string, optional (default: source_status).)) - New status name (default: source_status).
+- `transport_request` (string, optional) - 
+
+---
+
+<a id="deleteguistatus-high-level-gui-status"></a>
+#### DeleteGuiStatus (High-Level / Gui Status)
+**Description:** Delete a GUI status of a customer program (SE41 delete status); verified by reading the interface before and after — the status is gone, every other status unchanged. NEEDS an RFC connection and the helper ZMCP_CUA — if missing, the error says to run SetupGuiStatusHelper (ask the user first).
+
+**Notes:** Does what SE41's delete does: removes the status and its active-function entries. Its function key set, application toolbar and menu bar STAY in the interface, as in SE41 (other statuses may use them; SE41 removes unused ones only with Utilities > Delete unused objects) — the result warns which of them no other status uses now. Function codes are not deleted. A program still running SET PF-STATUS '<status>' then shows no status — check with SearchSource first.  Refused BEFORE anything is written: a program outside Z*/Y*/ns, not executable / module pool, or without a GUI interface; a status that does not exist (the error lists the statuses); a pending inactive version of the interface; a transportable program without transport_request or with a released / non-workbench request. dry_run runs every check and writes nothing.
+
+**Source:** `src/handlers/gui_status/high/handleDeleteGuiStatus.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `dry_run` (boolean, optional) - Check only.
+- `program_name` (string, required) - 
+- `status` (string, required) - Status to delete.
+- `transport_request` (string, optional) - 
+
+---
+
+<a id="removeguistatusbutton-high-level-gui-status"></a>
+#### RemoveGuiStatusButton (High-Level / Gui Status)
+**Description:** Remove a function's button from the application toolbar of a GUI status (SE41) — also ALV standard codes like &ABC in a copied status; later buttons move one slot left. Verified by reading the interface before and after. NEEDS an RFC connection and the helper ZMCP_CUA — if missing, the error says to run SetupGuiStatusHelper (ask the user first).
+
+**Notes:** As SE41: the toolbar entry goes and the entries after it move one slot left. Unless keep_function_key, the function's key binding in the status's key set goes too (keep it to leave the function reachable by its F-key); a function then referenced by no key and no menu is removed from the interface with its active-function entries (function_deleted), otherwise it stays defined (warned). The program's own sy-ucomm handling is not touched.  Refused BEFORE anything is written: a program outside Z*/Y*/ns, not executable / module pool, or without a GUI interface; a status that does not exist, is a context menu, or SHARES its function key set with another status (the change would appear there too — CopyGuiStatus to a new name first); a function that is not on the status's toolbar (the error lists the toolbar); a pending inactive version of the interface; a transportable program without transport_request or with a released / non-workbench request. dry_run runs every check and writes nothing.
+
+**Source:** `src/handlers/gui_status/high/handleRemoveGuiStatusButton.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `dry_run` (boolean, optional) - Check only.
+- `function_code` (string, required) - Code on the toolbar, e.g. ZEXPORT or &ABC.
+- `keep_function_key` (boolean, optional) - Keep the F-key binding (default false).
+- `program_name` (string, required) - 
+- `status` (string, required) - 
+- `transport_request` (string, optional) - 
+
+---
+
+<a id="setupguistatushelper-high-level-gui-status"></a>
+#### SetupGuiStatusHelper (High-Level / Gui Status)
+**Description:** One-time install of the SE41 helper that AddGuiStatusButton, CopyGuiStatus, RemoveGuiStatusButton and DeleteGuiStatus need: function group ZMCP_CUA with four RFC-enabled modules (Z_MCP_CUA_*), source shipped with this server. WRITES Z CODE INTO THE SAP SYSTEM — ask the user before calling it. Default package $TMP (no transport). Safe to re-run. GetGuiStatus does NOT need it.
+
+**Notes:** Why a Z helper: ADT has no GUI-status resource, and SE41's writer RS_CUA_INTERNAL_WRITE is not RFC-enabled (nor is SE41's copy RS_CUA_COPY_STA). Same installer as SetupTransactionHelper: an up-to-date helper is left alone unless force:true, a newer one is never downgraded, a same-named module in another function group is refused; verified by TFDIR (RFC-enabled), the ACTIVE source read back through ADT, and an RFC call on a fresh ABAP session. package_name other than $TMP needs transport_request.
+
+**Source:** `src/handlers/gui_status/high/handleSetupGuiStatusHelper.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `force` (boolean, optional) - Rewrite the source even when the installed helper is up to date. Default false.
+- `package_name` (string, optional) - Package for a NEW function group. Default $TMP.
+- `transport_request` (string, optional) - Transport request, required for a non-$TMP package.
 
 ---
 
@@ -1474,7 +1647,7 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 #### UpdateTextElements (High-Level / Program)
 **Description:** Write a program's TEXT-xxx symbols / selection texts (original language), merged by key, then activate; verified by reading the active text pool back. Translations: UpdateTranslation (RPT4).
 
-**Notes:** Protocol (measured on S4D over RFC): lock /sap/bc/adt/textelements/programs/{program}, PUT source/symbols and/or source/selections (each with its own media type), unlock, activate as PROG/PX. The write lands in the INACTIVE text pool; activation makes it active.  ALWAYS THE ORIGINAL LANGUAGE: a ZH-logon session writing an EN-original program changed the EN pool and created no ZH one, so this tool cannot write a translation. Texts containing CJK characters for a program whose original language is not CJK produce a warning — they would replace the original, not add a translation.  mode "merge" (default): the current texts (including changes pending in an inactive version) are read, the keys passed are added or replaced, remove_symbols are deleted, everything else is kept. mode "replace": the parts passed are written exactly as given (omitted symbols are deleted). A selections list replaces/merges selection texts the same way; a part not passed is not touched.  symbols: key = the 3 characters after TEXT- (001, A01). max_length defaults to the existing one or the text length — it is the room SE63 gives translators, so set it larger when a translation will be longer. Text symbols hold at most 132 characters, selection texts 30. A selection text you pass switches its Dictionary reference off unless you pass ddic_reference: true.  activate defaults to true. If an inactive version was already pending, it is activated together with this change and a warning says so. transport_request is required for a transportable program.
+**Notes:** Protocol (measured on S4D over RFC): lock /sap/bc/adt/textelements/programs/{program}, PUT source/symbols and/or source/selections (each with its own media type), unlock, activate as PROG/PX. The write lands in the INACTIVE text pool; activation makes it active.  ALWAYS THE ORIGINAL LANGUAGE: a ZH-logon session writing an EN-original program changed the EN pool and created no ZH one, so this tool cannot write a translation. Texts containing CJK characters for a program whose original language is not CJK produce a warning — they would replace the original, not add a translation.  mode "merge" (default): the current texts (including changes pending in an inactive version) are read, the keys passed are added or replaced, remove_symbols are deleted, everything else is kept. mode "replace": the parts passed are written exactly as given (omitted symbols are deleted). A selections list replaces/merges selection texts the same way; a part not passed is not touched.  symbols: key = the 3 characters after TEXT- (001, A01). max_length defaults to the existing one or the text length — it is the room SE63 gives translators, so set it larger when a translation will be longer. Text symbols hold at most 132 characters, selection texts 30. A selection text you pass switches its Dictionary reference off unless you pass ddic_reference: true.  activate defaults to true. If an inactive version was already pending, it is activated together with this change and a warning says so. transport_request is required for a transportable program; a TASK is accepted and sent as its request (E070-STRKORR): this resource checks corrNr against the request and refuses a task with CTS_WBO_API/020 (measured). CTS records into your task.
 
 **Source:** `src/handlers/program/high/handleUpdateTextElements.ts`
 
@@ -1554,9 +1727,9 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 
 <a id="addtranslationtotransport-high-level-translation"></a>
 #### AddTranslationToTransport (High-Level / Translation)
-**Description:** Put objects' translations into a transport request so they reach the next system — SE63/SLXT's language transport (LANG entries), e.g. after UpdateTranslation. Verified by reading the request back. NEEDS an RFC connection and the helper ZMCP_LXE on the system — if missing, the error says to run SetupTranslationHelper (ask the user first).
+**Description:** Record objects' translations (LANG entries, SE63/SLXT) in your task of a transport request (after UpdateTranslation). Verified by read-back. NEEDS RFC and the helper ZMCP_LXE — if missing, the error says to run SetupTranslationHelper (ask the user first).
 
-**Notes:** Does what SLXT (RS_LXE_LOG_EXPORT) does for the objects you name, read from the system source: for each LXE_LOG row of the object in that language (written by every SE63 save and by UpdateTranslation), LXE_OBJ_CREATE_TRANSPORT_ENTRY builds the LANG E071/E071K entries — the transport object type is NOT the LXE type (a data element's texts travel as LANG DTED, a domain's as LANG DOMD) — TR_REQ_CHECK_KEY checks the table keys and TR_REQUEST_CHOICE (no dialog) appends them to the request (measured on S4D: the LANG entries land on the request itself, not on a task).  The request must exist, be a REQUEST (not a task), be modifiable, and be a workbench (K) or transport-of-copies (T) request, as in SLXT; create one with CreateTransport. An object with no LXE_LOG row in that language (never saved as a translation, in this translation area) is refused per object (reason not_in_translation_log) rather than recorded empty.  Afterwards the request and its tasks are read back: success only when every entry is found there. Per-object failures are listed in errors with SLXT's own reasons; the call still records the objects that worked (verdict "partial"). dry_run builds and checks the entries, writes nothing.
+**Notes:** Does what SLXT (RS_LXE_LOG_EXPORT) does for the objects you name, read from the system source: for each LXE_LOG row of the object in that language (written by every SE63 save and by UpdateTranslation), LXE_OBJ_CREATE_TRANSPORT_ENTRY builds the LANG E071/E071K entries — the transport object type is NOT the LXE type (a data element's texts travel as LANG DTED, a domain's as LANG DOMD) — TR_REQ_CHECK_KEY checks the table keys and TR_REQUEST_CHOICE (no dialog) appends them to the request — SLXT puts them on the request itself. HERE they go into the CALLER'S TASK of that request (TR_APPEND_TO_COMM_OBJS_KEYS): `task` if given, otherwise the one modifiable task the logon user has under the request. No such task, or several, is refused before anything is written (AddTransportUser creates a task). A transport of copies (T) has no tasks: there the entries go on the request. `recorded_on` names where they went. Entries an older build put on the request itself can be moved into the task with MoveTransportObjects.  The request must exist, be a REQUEST (not a task), be modifiable, and be a workbench (K) or transport-of-copies (T) request, as in SLXT; create one with CreateTransport. An object with no LXE_LOG row in that language (never saved as a translation, in this translation area) is refused per object (reason not_in_translation_log) rather than recorded empty.  Afterwards the target is read back: success only when every entry is found there. Per-object failures are listed in errors with SLXT's own reasons; the call still records the objects that worked (verdict "partial"). dry_run builds and checks the entries, writes nothing.
 
 **Source:** `src/handlers/translation/high/handleAddTranslationToTransport.ts`
 
@@ -1564,8 +1737,9 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 
 **Parameters:**
 - `dry_run` (boolean, optional) - Check only, write nothing.
-- `language` (string, required) - Translation language: zhCN (LXE), ZH (ISO) or 1.
+- `language` (string, required) - Language: zhCN (LXE), ZH (ISO) or 1.
 - `objects` (array, required) - e.g. [{"object_type":"DTEL","object_name":"ZMY_DE"}]
+- `task` (string, optional (default: your only modifiable task.)) - Task to record into; default: your only modifiable task.
 - `translation_area` (string, optional) - 
 - `transport_request` (string, required) - Modifiable workbench request, e.g. ABCK900001.
 
@@ -1605,6 +1779,28 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 - `object_type` (string, required) - LXE type: DTEL, DOMA, TABT, TRAN, …
 - `texts` (array, required) - e.g. [{"key":"SCRTEXT_M","text":"销售订单"}]
 - `translation_area` (string, optional) - 
+
+---
+
+<a id="high-level-transport"></a>
+### High-Level / Transport
+
+<a id="movetransportobjects-high-level-transport"></a>
+#### MoveTransportObjects (High-Level / Transport)
+**Description:** Move object-list entries (E071) between transport requests/tasks, e.g. entries on a request into a task of it. Verified by reading both lists back.
+
+**Notes:** Two routes, chosen from the two headers (E070): - different requests (task -> task of another request, request -> request): SAP's own move, the one   SE09 uses (ADT moveobjects -> TR_MOVE_OBJECTS -> TRINT_MOVE_OBJECTS). It moves the object locks   too. SAP refuses: different types (a request and a task), different target system, a source or   target not changeable by the logon user, entries locked elsewhere. - inside one request (the request itself <-> one of its tasks, task <-> task): SAP's move refuses   this (TR 712, "only to a request of the same type"), so it goes through the RFC helper module   Z_MCP_LXE_MOVE (function group ZMCP_LXE, installed by SetupTranslationHelper; needs an RFC   connection). It deletes the entries from the source and appends them to the target with their   table keys, as TRINT_MOVE_OBJECTS does, after TRINT_CHECK_REQUEST_CHANGEABLE on both sides.   Entries with an object lock (LOCKFLAG X) are refused there: their lock would have to move too.  Name the entries with objects ([{pgmid?, object_type, object_name, lang?}]) or pick them with select ({"pgmid":"LANG"} = every LANG entry of the source). CORR entries never move. An entry that is not in the source, or matches several entries, is refused before anything is written.  verdict: "moved" = every entry is in the target and gone from the source (independent E071 read); "partial" / "not_moved" list the entries in not_moved; "unverified" = the call returned but an object list could not be read. dry_run reads and checks, writes nothing.
+
+**Source:** `src/handlers/transport/high/handleMoveTransportObjects.ts`
+
+**Available in:** `onprem`, `legacy`
+
+**Parameters:**
+- `dry_run` (boolean, optional) - Read and check only, write nothing.
+- `objects` (array, optional) - e.g. [{"object_type":"CLAS","object_name":"ZCL_X"}]
+- `select` (object, optional) - Instead of objects: all matching entries, e.g. {"pgmid":"LANG"}.
+- `source_transport` (string, required) - Request or task the entries are on now, e.g. ABCK900001.
+- `target_transport` (string, required) - Request or task to move them to, e.g. ABCK900002.
 
 ---
 
@@ -2146,6 +2342,7 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 - `class_name` (string, required) - Class name (e.g., ZCL_TEST_CLASS_001). Class must already exist.
 - `lock_handle` (string, required) - Lock handle from LockClass operation. Required for update operation.
 - `source_code` (string, required) - Complete ABAP class source code including CLASS DEFINITION and IMPLEMENTATION sections.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 
 ---
 
@@ -2573,10 +2770,11 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 
 **Parameters:**
 - `interface_name` (string, required) - Interface name (e.g., ZIF_TEST_INTERFACE). Interface must already exist.
-- `lock_handle` (string, required) - Lock handle from LockObject. Required for update operation.
-- `session_id` (string, optional) - Session ID from GetSession. If not provided, a new session will be created.
-- `session_state` (object, optional) - Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.
+- `lock_handle` (string, required) - Lock handle from LockObject.
+- `session_id` (string, optional) - Optional session ID from GetSession.
+- `session_state` (object, optional) - Session state from GetSession; needed with session_id.
 - `source_code` (string, required) - Complete ABAP interface source code.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 
 ---
 
@@ -2806,11 +3004,12 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 **Available in:** `onprem`, `legacy`
 
 **Parameters:**
-- `lock_handle` (string, required) - Lock handle from LockObject. Required for update operation.
+- `lock_handle` (string, required) - Lock handle from LockObject.
 - `program_name` (string, required) - Program name (e.g., Z_TEST_PROGRAM). Program must already exist.
-- `session_id` (string, optional) - Session ID from GetSession. If not provided, a new session will be created.
-- `session_state` (object, optional) - Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.
+- `session_id` (string, optional) - Optional session ID from GetSession.
+- `session_state` (object, optional) - Session state from GetSession; needed with session_id.
 - `source_code` (string, required) - Complete ABAP program source code.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 
 ---
 
@@ -2933,7 +3132,7 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 
 <a id="updateviewlow-low-level-view"></a>
 #### UpdateViewLow (Low-Level / View)
-**Description:** [low-level] Update DDL source code of an existing CDS View or Classic View. Requires lock handle from LockObject. - use UpdateView (high-level) for full workflow with lock/unlock/activate.
+**Description:** [low-level] Update DDL source code of an existing CDS View or Classic View. Needs a lock handle from LockObject; UpdateView (high-level) does lock/update/unlock/activate.
 
 **Source:** `src/handlers/view/low/handleUpdateView.ts`
 
@@ -2941,9 +3140,10 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 
 **Parameters:**
 - `ddl_source` (string, required) - Complete DDL source code. CDS: include @AbapCatalog.sqlViewName and other annotations. Classic: plain 'define view' statement.
-- `lock_handle` (string, required) - Lock handle from LockObject. Required for update operation.
-- `session_id` (string, optional) - Session ID from GetSession. If not provided, a new session will be created.
-- `session_state` (object, optional) - Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.
+- `lock_handle` (string, required) - Lock handle from LockObject.
+- `session_id` (string, optional) - Optional session ID from GetSession.
+- `session_state` (object, optional) - Session state from GetSession; needed with session_id.
+- `transport_request` (string, optional) - Transport request/task (corrNr) for a transportable package; omit for $TMP.
 - `view_name` (string, required) - View name (e.g., ZOK_R_TEST_0002). View must already exist.
 
 ---
@@ -2981,4 +3181,4 @@ Legacy systems support a subset of tools — primarily Class, Interface, View, P
 
 ---
 
-*Last updated: 2026-11-09*
+*Last updated: 2026-11-17*

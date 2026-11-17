@@ -406,8 +406,8 @@ describe('SetupTranslationHelper', () => {
     );
     expect(result.isError).toBe(false);
     expect(JSON.parse(text(result))).toMatchObject({ changed: false });
-    // one version probe per helper module (READ, WRITE, RECORD)
-    expect(conn.callFunction).toHaveBeenCalledTimes(3);
+    // one version probe per helper module (READ, WRITE, RECORD, MOVE)
+    expect(conn.callFunction).toHaveBeenCalledTimes(4);
   });
 
   it('refuses a transportable package without a transport request', async () => {
@@ -424,32 +424,46 @@ describe('SetupTranslationHelper', () => {
 });
 
 describe('Z_MCP_LXE_RECORD source', () => {
-  it('never opens a dialog (it runs over RFC) and checks the request first', () => {
+  it('never opens a dialog (it runs over RFC) and checks request and task first', () => {
     const src = LXE_HELPER_RECORD_SOURCE;
-    const choice = src.indexOf("CALL FUNCTION 'TR_REQUEST_CHOICE'");
-    expect(choice).toBeGreaterThan(0);
-    expect(src.slice(choice, choice + 200)).toMatch(
-      /iv_suppress_dialog\s*=\s*'X'/,
-    );
-    // request existence / task / status / type are checked before any write
+    expect(src).not.toMatch(/CALL FUNCTION 'TR_REQUEST_CHOICE'/);
+    const append = src.indexOf("CALL FUNCTION 'TR_APPEND_TO_COMM_OBJS_KEYS'");
+    expect(append).toBeGreaterThan(0);
+    expect(src.slice(append, append + 200)).toMatch(/iv_dialog\s*=\s*' '/);
+    // request existence / task / status / type and the target task are
+    // resolved before any write
     for (const guard of [
       'does not exist',
       'is a task of request',
       'is not modifiable',
       'language entries go into a workbench',
+      'is not a task of request',
+      'has no modifiable task under request',
+      'has several modifiable tasks',
     ]) {
       const at = src.indexOf(guard);
       expect(at).toBeGreaterThan(0);
-      expect(at).toBeLessThan(choice);
+      expect(at).toBeLessThan(append);
     }
   });
 
-  it('only claims success from what it read back on the request', () => {
+  it('appends to the resolved target, not to the request', () => {
+    const src = LXE_HELPER_RECORD_SOURCE;
+    const append = src.indexOf("CALL FUNCTION 'TR_APPEND_TO_COMM_OBJS_KEYS'");
+    expect(src.slice(append, append + 120)).toMatch(
+      /wi_trkorr\s*=\s*ev_target/,
+    );
+    // a transport of copies has no tasks: only there the request is the target
+    expect(src).toMatch(/IF lv_trfunction = 'T'\.\s*ev_target = iv_request\./);
+  });
+
+  it('only claims success from what it read back on the target', () => {
     const src = LXE_HELPER_RECORD_SOURCE;
     const readBack = src.indexOf('SELECT * FROM e071');
     const success = src.indexOf("ev_status = 'S'");
     expect(readBack).toBeGreaterThan(0);
     expect(success).toBeGreaterThan(readBack);
+    expect(src).toMatch(/low = ev_target \) TO lt_korr/);
   });
 });
 
@@ -506,6 +520,7 @@ describe('AddTranslationToTransport', () => {
     });
     const params = context.connection.callFunction.mock.calls[0][1];
     expect(params).toMatchObject({
+      IV_TASK: '',
       IV_REQUEST: 'ABCK900001',
       IV_TARGET_LANG: 'zhCN',
       IV_TEST: '',
@@ -536,6 +551,45 @@ describe('AddTranslationToTransport', () => {
     expect(text(result)).toMatch(/is a task of request/);
   });
 
+  it('passes an explicit task and reports where the entries went', async () => {
+    const context = ctx(() => ({
+      EV_VERSION: LXE_HELPER_VERSION,
+      EV_STATUS: 'S',
+      EV_TARGET: 'ABCK900002',
+      ET_ENTRIES: [],
+      ET_ERRORS: [],
+    }));
+    const body = JSON.parse(
+      text(
+        await handleAddTranslationToTransport(context, {
+          transport_request: 'ABCK900001',
+          task: 'abck900002',
+          language: 'zhCN',
+          objects: [{ object_type: 'DTEL', object_name: 'ZMY_DE' }],
+        }),
+      ),
+    );
+    expect(context.connection.callFunction.mock.calls[0][1].IV_TASK).toBe(
+      'ABCK900002',
+    );
+    expect(body).toMatchObject({
+      recorded_on: 'ABCK900002',
+      verdict: 'recorded',
+    });
+  });
+
+  it('refuses a malformed task number before calling SAP', async () => {
+    const context = ctx(() => ({}));
+    const result = await handleAddTranslationToTransport(context, {
+      transport_request: 'ABCK900001',
+      task: 'not-a-task',
+      language: 'zhCN',
+      objects: [{ object_type: 'DTEL', object_name: 'ZMY_DE' }],
+    });
+    expect(result.isError).toBe(true);
+    expect(context.connection.callFunction).not.toHaveBeenCalled();
+  });
+
   it('dry_run sets IV_TEST and claims neither write nor verification', async () => {
     const context = ctx(() => ({
       EV_VERSION: LXE_HELPER_VERSION,
@@ -554,7 +608,7 @@ describe('AddTranslationToTransport', () => {
       ),
     );
     expect(context.connection.callFunction.mock.calls[0][1].IV_TEST).toBe('X');
-    expect(body).toMatchObject({ written: false, verified_on_request: false });
+    expect(body).toMatchObject({ written: false, verified_on_target: false });
   });
 
   it('refuses a malformed request number or a duplicate object before calling SAP', async () => {

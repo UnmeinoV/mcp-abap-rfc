@@ -8,7 +8,12 @@
 import { createAdtClient } from '../../../lib/clients';
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
 import {
+  lockForLowTool,
+  lockTransportFields,
+} from '../../../lib/lowLockTransport';
+import {
   type AxiosResponse,
+  encodeSapObjectName,
   return_error,
   return_response,
 } from '../../../lib/utils';
@@ -52,7 +57,7 @@ export async function handleLockClass(
       return return_error(new Error('class_name is required'));
     }
 
-    const client = createAdtClient(connection, logger);
+    createAdtClient(connection, logger); // wraps the connection (sap-language pinning)
 
     const className = class_name.toUpperCase();
 
@@ -60,7 +65,13 @@ export async function handleLockClass(
 
     try {
       // Lock class
-      const lockHandle = await client.getClass().lock({ className });
+      // Our own LOCK (same request as the dependency's lock()), because that
+      // one drops SAP's CORRNR — see lib/lowLockTransport.ts (issue #3).
+      const lock = await lockForLowTool(
+        connection,
+        `/sap/bc/adt/oo/classes/${encodeSapObjectName(className).toLowerCase()}`,
+      );
+      const lockHandle = lock.lockHandle;
 
       if (!lockHandle) {
         throw new Error(
@@ -77,6 +88,7 @@ export async function handleLockClass(
             success: true,
             class_name: className,
             lock_handle: lockHandle,
+            ...lockTransportFields(lock),
             message: `Class ${className} locked successfully. Use this lock_handle for subsequent update/unlock operations.`,
           },
           null,

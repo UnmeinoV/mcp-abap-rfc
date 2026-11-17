@@ -138,6 +138,68 @@ export function defaultRfcTraceDir(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
+/**
+ * Logons SAP REFUSED in this process, by logon identity (issue #1).
+ *
+ * WHY PROCESS-WIDE: SAP locks a user after `login/fails_to_user_lock` failed
+ * logons, and over RFC every request after a lost session calls connect()
+ * again — so with a password that went stale, each tool call was one more
+ * failed logon and a handful of calls locked the account. A per-connection
+ * flag would not stop it: on stdio a connection whose logon failed is evicted
+ * from BaseMcpServer's cache and the next call builds a NEW one. Only a
+ * restart clears an entry; a corrected password means a new process anyway.
+ * Only a REFUSED logon is remembered — a network failure is retried as before.
+ */
+const refusedLogons = new Map<string, Error>();
+
+/** Forget every refused logon — for tests only. */
+export function resetRefusedRfcLogons(): void {
+  refusedLogons.clear();
+}
+
+/** Who logs on where; the password is deliberately not part of it. */
+function rfcLogonKey(params: Record<string, string>): string {
+  const pick = (k: string) => String(params[k] ?? '').trim();
+  return JSON.stringify([
+    pick('ashost'),
+    pick('sysnr'),
+    pick('mshost'),
+    pick('group'),
+    pick('saprouter'),
+    pick('client'),
+    pick('user').toUpperCase(),
+  ]);
+}
+
+/**
+ * The SDK rejects a refused logon with an error OBJECT (`codeString` /
+ * `key` RFC_LOGON_FAILURE, `group` 3 = LOGON_FAILURE); the dependency turns it
+ * into `Failed to open RFC connection: <its JSON>`. Both shapes are accepted.
+ */
+export function isRfcLogonFailure(error: unknown): boolean {
+  const e = error as Record<string, unknown> | undefined;
+  if (e && typeof e === 'object') {
+    if (e.codeString === 'RFC_LOGON_FAILURE' || e.key === 'RFC_LOGON_FAILURE')
+      return true;
+    // group 3 = LOGON_FAILURE in the SDK's RFC_ERROR_GROUP.
+    if (e.group === 3 && typeof e.codeString === 'string') return true;
+  }
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return (
+    /"(?:codeString|key)"\s*:\s*"RFC_LOGON_FAILURE"/.test(message) ||
+    /"group"\s*:\s*3(?!\d)/.test(message)
+  );
+}
+
+function refusedAgain(first: Error): Error {
+  return new Error(
+    `${first.message} — SAP REFUSED this logon earlier in this process, so ` +
+      'no new logon was attempted and nothing was sent to SAP (every failed ' +
+      'logon counts toward the user lock). Fix the credentials and restart ' +
+      'the MCP server.',
+  );
+}
+
 export function applyRfcOverrides(
   connection: AbapConnectionInstance,
   env: NodeJS.ProcessEnv = process.env,
@@ -163,6 +225,27 @@ export function applyRfcOverrides(
     return;
   }
   Object.assign(rfc.rfcParams, overrides);
+
+  // Every logon of this connection — send(), callFunction() and a caller's
+  // own connect() (BaseMcpServer.openConnection) — goes through this latch.
+  const rawConnect = rfc.connect.bind(connection);
+  const params = rfc.rfcParams;
+  rfc.connect = async () => {
+    const key = rfcLogonKey(params);
+    const refused = refusedLogons.get(key);
+    if (refused) throw refusedAgain(refused);
+    try {
+      await rawConnect();
+    } catch (error) {
+      if (isRfcLogonFailure(error)) {
+        refusedLogons.set(
+          key,
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      }
+      throw error;
+    }
+  };
 
   // The dependency's RFC connection throws "not open" until connect() is
   // called, and only some call sites call it. Open it on first use instead, so

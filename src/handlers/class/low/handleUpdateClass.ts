@@ -7,6 +7,7 @@
 
 import { createAdtClient } from '../../../lib/clients';
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
+import { resolveLowTransport } from '../../../lib/lowLockTransport';
 import {
   type AxiosResponse,
   return_error,
@@ -36,12 +37,18 @@ export const TOOL_DEFINITION = {
         description:
           'Lock handle from LockClass operation. Required for update operation.',
       },
+      transport_request: {
+        type: 'string',
+        description:
+          'Transport request/task (corrNr) for a transportable package; omit for $TMP.',
+      },
     },
     required: ['class_name', 'source_code', 'lock_handle'],
   },
 } as const;
 
 interface UpdateClassArgs {
+  transport_request?: string;
   class_name: string;
   source_code: string;
   lock_handle: string;
@@ -68,6 +75,12 @@ export async function handleUpdateClass(
     }
 
     const client = createAdtClient(connection, logger);
+    // The caller's argument, else the CORRNR SAP returned to the Lock*Low
+    // call that produced this handle (issue #3).
+    const { transportRequest, source: transportSource } = resolveLowTransport(
+      (args as { transport_request?: string }).transport_request,
+      (args as { lock_handle?: string }).lock_handle,
+    );
 
     const className = class_name.toUpperCase();
 
@@ -78,7 +91,7 @@ export async function handleUpdateClass(
       const updateState = await client
         .getClass()
         .update(
-          { className, sourceCode: source_code },
+          { className, sourceCode: source_code, transportRequest },
           { lockHandle: lock_handle },
         );
       const updateResult = updateState.updateResult;
@@ -95,6 +108,10 @@ export async function handleUpdateClass(
         data: JSON.stringify(
           {
             success: true,
+            transport_request: transportRequest ?? null,
+            ...(transportSource === 'lock'
+              ? { transport_request_source: 'lock (CORRNR)' }
+              : {}),
             class_name: className,
             message: `Class ${className} updated successfully. Remember to unlock using UnlockClassLow.`,
           },

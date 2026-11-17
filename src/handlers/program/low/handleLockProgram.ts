@@ -8,7 +8,12 @@
 import { createAdtClient } from '../../../lib/clients';
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
 import {
+  lockForLowTool,
+  lockTransportFields,
+} from '../../../lib/lowLockTransport';
+import {
   type AxiosResponse,
+  encodeSapObjectName,
   isCloudConnection,
   restoreSessionInConnection,
   return_error,
@@ -84,7 +89,7 @@ export async function handleLockProgram(
       );
     }
 
-    const client = createAdtClient(connection, logger);
+    createAdtClient(connection, logger); // wraps the connection (sap-language pinning)
     // Restore session state if provided
     if (session_id && session_state) {
       await restoreSessionInConnection(connection, session_id, session_state);
@@ -98,9 +103,13 @@ export async function handleLockProgram(
 
     try {
       // Lock program
-      const lockHandle = await client.getProgram().lock({
-        programName: programName,
-      });
+      // Our own LOCK (same request as the dependency's lock()), because that
+      // one drops SAP's CORRNR — see lib/lowLockTransport.ts (issue #3).
+      const lock = await lockForLowTool(
+        connection,
+        `/sap/bc/adt/programs/programs/${encodeSapObjectName(programName).toLowerCase()}`,
+      );
+      const lockHandle = lock.lockHandle;
 
       if (!lockHandle) {
         throw new Error(
@@ -120,6 +129,7 @@ export async function handleLockProgram(
             program_name: programName,
             session_id: session_id || null,
             lock_handle: lockHandle,
+            ...lockTransportFields(lock),
             session_state: null, // Session state is not persisted by this server,
             message: `Program ${programName} locked successfully. Use this lock_handle and session_id for subsequent update/unlock operations.`,
           },

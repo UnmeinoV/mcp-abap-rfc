@@ -6,9 +6,12 @@
  * Read from S4D's source (2026-11-05): SLXT = RS_LXE_LOG_EXPORT →
  * CL_LXE_LOG_EXPORT_LOCAL->write_to_request_local, which per LXE_LOG row calls
  * LXE_OBJ_CREATE_TRANSPORT_ENTRY (LANG E071/E071K), TR_REQ_CHECK_KEY and
- * TR_REQUEST_CHOICE with the dialog suppressed. The helper does exactly that
- * and then reads the request back; the verdict here is the helper's, derived
- * from what is on the request afterwards — never from the call returning.
+ * TR_REQUEST_CHOICE with the dialog suppressed — which puts the entries on the
+ * REQUEST itself. Since helper v4 they go into the caller's TASK of the request
+ * instead (TR_APPEND_TO_COMM_OBJS_KEYS), so translations travel with the rest
+ * of the developer's work; a transport of copies (no tasks) keeps the request.
+ * The helper reads the target back; the verdict here is the helper's, derived
+ * from what is on the target afterwards — never from the call returning.
  */
 
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
@@ -32,20 +35,25 @@ export const TOOL_DEFINITION = {
   name: 'AddTranslationToTransport',
   available_in: ['onprem', 'legacy'] as const,
   description:
-    "Put objects' translations into a transport request so they reach the next system — SE63/SLXT's language transport (LANG entries), e.g. after UpdateTranslation. Verified by reading the request back. NEEDS an RFC connection and the helper ZMCP_LXE on the system — if missing, the error says to run SetupTranslationHelper (ask the user first).",
+    "Record objects' translations (LANG entries, SE63/SLXT) in your task of a transport request (after UpdateTranslation). Verified by read-back. NEEDS RFC and the helper ZMCP_LXE — if missing, the error says to run SetupTranslationHelper (ask the user first).",
   notes: `Does what SLXT (RS_LXE_LOG_EXPORT) does for the objects you name, read from the system source:
 for each LXE_LOG row of the object in that language (written by every SE63 save and by
 UpdateTranslation), LXE_OBJ_CREATE_TRANSPORT_ENTRY builds the LANG E071/E071K entries — the
 transport object type is NOT the LXE type (a data element's texts travel as LANG DTED, a domain's
 as LANG DOMD) — TR_REQ_CHECK_KEY checks the table keys and TR_REQUEST_CHOICE (no dialog) appends
-them to the request (measured on S4D: the LANG entries land on the request itself, not on a task).
+them to the request — SLXT puts them on the request itself. HERE they go into the CALLER'S TASK of
+that request (TR_APPEND_TO_COMM_OBJS_KEYS): \`task\` if given, otherwise the one modifiable task the
+logon user has under the request. No such task, or several, is refused before anything is written
+(AddTransportUser creates a task). A transport of copies (T) has no tasks: there the entries go on
+the request. \`recorded_on\` names where they went. Entries an older build put on the request itself
+can be moved into the task with MoveTransportObjects.
 
 The request must exist, be a REQUEST (not a task), be modifiable, and be a workbench (K) or
 transport-of-copies (T) request, as in SLXT; create one with CreateTransport. An object with no
 LXE_LOG row in that language (never saved as a translation, in this translation area) is refused
 per object (reason not_in_translation_log) rather than recorded empty.
 
-Afterwards the request and its tasks are read back: success only when every entry is found there.
+Afterwards the target is read back: success only when every entry is found there.
 Per-object failures are listed in errors with SLXT's own reasons; the call still records the
 objects that worked (verdict "partial"). dry_run builds and checks the entries, writes nothing.`,
   inputSchema: {
@@ -55,9 +63,13 @@ objects that worked (verdict "partial"). dry_run builds and checks the entries, 
         type: 'string',
         description: 'Modifiable workbench request, e.g. ABCK900001.',
       },
+      task: {
+        type: 'string',
+        description: 'Task to record into; default: your only modifiable task.',
+      },
       language: {
         type: 'string',
-        description: 'Translation language: zhCN (LXE), ZH (ISO) or 1.',
+        description: 'Language: zhCN (LXE), ZH (ISO) or 1.',
       },
       objects: {
         type: 'array',
@@ -86,6 +98,7 @@ objects that worked (verdict "partial"). dry_run builds and checks the entries, 
 
 interface AddTranslationToTransportArgs {
   transport_request: string;
+  task?: string;
   language: string;
   objects: Array<{ object_type: string; object_name: string }>;
   dry_run?: boolean;
@@ -164,6 +177,12 @@ export async function handleAddTranslationToTransport(
         `transport_request "${args?.transport_request ?? ''}" is not a transport number (e.g. ABCK900001)`,
       );
     }
+    const task = args?.task ? normaliseTransportNumber(args.task) : '';
+    if (task && !TRANSPORT_NUMBER_PATTERN.test(task)) {
+      throw new Error(
+        `task "${args?.task}" is not a transport number (e.g. ABCK900002)`,
+      );
+    }
     const language = normalizeLxeLanguage(args?.language);
     const area = (args?.translation_area || LXE_LOCAL_AREA).trim();
     const dryRun = args?.dry_run === true;
@@ -193,10 +212,12 @@ export async function handleAddTranslationToTransport(
       IT_OBJECTS: objects,
       IV_CUSTMNR: area,
       IV_TEST: dryRun ? 'X' : '',
+      IV_TASK: task,
     });
 
     const status = String(result.EV_STATUS ?? '').trim();
     const message = String(result.EV_MESSAGE ?? '').trim();
+    const recordedOn = String(result.EV_TARGET ?? '').trim();
     const entries = toRecordedEntries(result.ET_ENTRIES);
     const errors = toRecordErrors(result.ET_ERRORS);
 
@@ -226,8 +247,9 @@ export async function handleAddTranslationToTransport(
               verdict: status === 'S' ? 'recorded' : 'partial',
               dry_run: dryRun,
               written: !dryRun,
-              verified_on_request: !dryRun,
+              verified_on_target: !dryRun,
               transport_request: request,
+              recorded_on: recordedOn || null,
               language: language.lxe,
               ...(language.expanded
                 ? { language_requested: language.requested }

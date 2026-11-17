@@ -118,8 +118,38 @@ export async function getAdt(
 export async function lockAdt(
   connection: IAbapConnection,
   objectUrl: string,
-  /**
-   * Language for the stateful session this LOCK creates.
+  /** Session language for the lock — see lockAdtResult. */
+  language?: string,
+): Promise<string> {
+  return (await lockAdtResult(connection, objectUrl, { language })).lockHandle;
+}
+
+/** What SAP answers to a LOCK: the handle, and the request it recorded the object in. */
+export interface AdtLockResult {
+  lockHandle: string;
+  /** CORRNR — the request/task the object is (or will be) recorded in; '' for a local object. */
+  corrNr?: string;
+  corrUser?: string;
+  corrText?: string;
+}
+
+/**
+ * The Accept the dependency's per-type lock() sends (prefers lock.result2).
+ * Used by the Lock*Low tools so their request is unchanged on the wire.
+ */
+export const ACCEPT_LOCK_RESULT2 =
+  'application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.lock.result;q=0.8, ' +
+  'application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.lock.result2;q=0.9';
+
+/** LOCK an object and return everything SAP says about it, CORRNR included. */
+export async function lockAdtResult(
+  connection: IAbapConnection,
+  objectUrl: string,
+  options: { language?: string; accept?: string } = {},
+): Promise<AdtLockResult> {
+  // options.language — the language for the stateful session this LOCK creates.
+  const { language } = options;
+  /*
    *
    * The language a DDIC text is written in comes from the SESSION, and this
    * request is the one that opens the stateful session — so it must carry the
@@ -129,8 +159,6 @@ export async function lockAdt(
    * master-language row; every request of the write carrying the language left
    * it byte-identical and added the target-language row.
    */
-  language?: string,
-): Promise<string> {
   let res: Awaited<ReturnType<typeof makeAdtRequestWithTimeout>>;
   try {
     res = await makeAdtRequestWithTimeout(
@@ -146,6 +174,7 @@ export async function lockAdt(
       },
       {
         Accept:
+          options.accept ??
           'application/vnd.sap.as+xml;charset=UTF-8;dataname=com.sap.adt.lock.result',
       },
     );
@@ -171,13 +200,19 @@ export async function lockAdt(
     }
     throw error;
   }
-  const handle = String(res?.data ?? '').match(
-    /<LOCK_HANDLE>([^<]*)<\/LOCK_HANDLE>/,
-  )?.[1];
+  const body = String(res?.data ?? '');
+  const field = (tag: string) =>
+    body.match(new RegExp(`<${tag}>([^<]*)</${tag}>`))?.[1]?.trim();
+  const handle = field('LOCK_HANDLE');
   if (!handle) {
     throw new Error(`Could not obtain lock handle for ${objectUrl}`);
   }
-  return handle;
+  return {
+    lockHandle: handle,
+    corrNr: field('CORRNR'),
+    corrUser: field('CORRUSER'),
+    corrText: field('CORRTEXT'),
+  };
 }
 
 /** Unlock an object (best-effort; never throws). */

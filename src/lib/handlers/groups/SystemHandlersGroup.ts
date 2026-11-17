@@ -1,4 +1,8 @@
 import {
+  TOOL_DEFINITION as GetGuiStatus_Tool,
+  handleGetGuiStatus,
+} from '../../../handlers/gui_status/readonly/handleGetGuiStatus';
+import {
   TOOL_DEFINITION as GetTextElements_Tool,
   handleGetTextElements,
 } from '../../../handlers/program/readonly/handleGetTextElements';
@@ -208,6 +212,10 @@ export class SystemHandlersGroup extends BaseHandlerGroup {
       {
         toolDefinition: GetTranslation_Tool,
         handler: (args: any) => handleGetTranslation(this.context, args),
+      },
+      {
+        toolDefinition: GetGuiStatus_Tool,
+        handler: (args: any) => handleGetGuiStatus(this.context, args),
       },
       {
         toolDefinition: RuntimeCreateProfilerTraceParameters_Tool,

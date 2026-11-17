@@ -86,20 +86,96 @@ function isFunctionNotFound(error: unknown): boolean {
  * once. The NW RFC SDK caches function descriptions per process (it has
  * RfcRemoveFunctionDesc, but sap-rfc-lite does not expose it). Only a restart
  * clears it, so the error must say restart, not "run setup again".
+ *
+ * MEASURED 2026-11-13 (S4D): the same cache also lets a call SUCCEED with a
+ * wrong answer. The SE41 helper's EV_MESSAGE went from CHAR 220 to STRING; the
+ * installer had called the old module (to read version_before), rewrote it,
+ * and its verification call then answered EV_VERSION "2" — while EV_MESSAGE
+ * of the next real call came back as mojibake (its bytes decoded with the old
+ * CHAR description). So once a group has been rewritten AFTER one of its
+ * modules was called in this process, a successful call proves nothing, and
+ * every further call is refused with "restart" (staleSignature).
+ *
+ * REPORTED 2026-11-17 (issue #6): "called" used to be recorded per GROUP and
+ * for every failure except FU_NOT_FOUND. A dropped connection before the
+ * helper was ever installed therefore made its FIRST install end in "restart",
+ * with every later call refused — in a process whose SDK cannot hold a
+ * description of modules that did not exist. Now tracked per MODULE, in two
+ * grades:
+ *   answered  — a call returned a result: the description IS cached.
+ *   attempted — a call failed with something other than FU_NOT_FOUND: the
+ *               description is cached only if the module existed. Whether it
+ *               did is decided by the installer's TFDIR read before the write.
+ * A module that never answered here and was not in TFDIR before the write
+ * cannot have a cached description, whatever errors came before.
  */
 const rewrittenInThisProcess = new Set<string>();
+/** Modules that returned a result in this process (signature cached). */
+const answeredInThisProcess = new Set<string>();
+/** Modules whose call failed other than FU_NOT_FOUND (cached if they existed). */
+const attemptedInThisProcess = new Set<string>();
+/** Groups rewritten after a call: the cached signature may be wrong. */
+const staleInThisProcess = new Set<string>();
 
-export function markRewritten(spec: RfcHelperSpec): void {
+/**
+ * In every text that asks for a restart, so a host that runs this server as a
+ * managed process can recognise it without parsing prose. Search for it
+ * anywhere in the text: a result may carry a prefix (tool name, sap_client).
+ */
+export const RESTART_REQUIRED_MARKER = '[MCP_RESTART_REQUIRED]';
+
+/**
+ * Record that a module's source was written by this process.
+ *
+ * `existedBefore` is the installer's TFDIR read taken before the write. Without
+ * a module name (or without that knowledge) the conservative answer is used:
+ * any earlier call of the group makes it stale.
+ */
+export function markRewritten(
+  spec: RfcHelperSpec,
+  moduleName?: string,
+  existedBefore = true,
+): void {
   rewrittenInThisProcess.add(spec.group);
+  const names = moduleName ? [moduleName] : spec.modules.map((m) => m.name);
+  for (const name of names) {
+    if (
+      answeredInThisProcess.has(name) ||
+      (existedBefore && attemptedInThisProcess.has(name))
+    ) {
+      staleInThisProcess.add(spec.group);
+    }
+  }
 }
 
 export function wasRewritten(spec: RfcHelperSpec): boolean {
   return rewrittenInThisProcess.has(spec.group);
 }
 
+/**
+ * Record the outcome of calling one module. A call answered FU_NOT_FOUND
+ * leaves no description behind and is not recorded.
+ */
+export function noteHelperCalled(
+  _spec: RfcHelperSpec,
+  moduleName: string,
+  error?: unknown,
+): void {
+  if (error === undefined) answeredInThisProcess.add(moduleName);
+  else if (!isFunctionNotFound(error)) attemptedInThisProcess.add(moduleName);
+}
+
+/** True when this process may decode the helper with an outdated signature. */
+export function hasStaleSignature(spec: RfcHelperSpec): boolean {
+  return staleInThisProcess.has(spec.group);
+}
+
 /** Test hook. */
 export function resetRewritten(): void {
   rewrittenInThisProcess.clear();
+  answeredInThisProcess.clear();
+  attemptedInThisProcess.clear();
+  staleInThisProcess.clear();
 }
 
 function setupHint(spec: RfcHelperSpec): string {
@@ -131,10 +207,22 @@ export async function callRfcHelper(
         'and ADT over HTTP has no way to call a function module.',
     );
   }
+  if (hasStaleSignature(spec)) {
+    throw new RfcHelperUnavailable(
+      'outdated',
+      `${RESTART_REQUIRED_MARKER} The ${spec.label} was rewritten by ${spec.setupTool} in this server ` +
+        `process after the process had already called it: the SAP NW RFC SDK ` +
+        `caches function signatures per process, so its answers here could be ` +
+        `decoded with the OLD signature. RESTART THE MCP SERVER (e.g. /mcp ` +
+        `reconnect) — do not run ${spec.setupTool} again.`,
+    );
+  }
   let result: Record<string, any>;
   try {
     result = await call(functionName, params);
+    noteHelperCalled(spec, functionName);
   } catch (error) {
+    noteHelperCalled(spec, functionName, error);
     if (isFunctionNotFound(error)) {
       throw new RfcHelperUnavailable(
         'missing',
@@ -161,7 +249,7 @@ export async function callRfcHelper(
     if (wasRewritten(spec)) {
       throw new RfcHelperUnavailable(
         'outdated',
-        `The ${spec.label} was updated by ${spec.setupTool} in ` +
+        `${RESTART_REQUIRED_MARKER} The ${spec.label} was updated by ${spec.setupTool} in ` +
           `this server process, but the process still sees the old version ` +
           `"${installed || '(none)'}": the SAP NW RFC SDK caches function ` +
           `signatures per process. RESTART THE MCP SERVER (e.g. /mcp reconnect) ` +

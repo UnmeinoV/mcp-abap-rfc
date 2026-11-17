@@ -124,6 +124,8 @@ describe('applyRfcOverrides', () => {
       makeAdtRequest: jest.fn(async () => ({ status: 200 })),
     };
     const original = stub.makeAdtRequest;
+    // applyRfcOverrides wraps connect() (the refused-logon latch, #1).
+    const rawConnect = stub.connect;
     applyRfcOverrides(stub, { SAP_SAPROUTER: '/H/1.2.3.4/H/' });
 
     await Promise.all([
@@ -132,7 +134,7 @@ describe('applyRfcOverrides', () => {
     ]);
     await stub.makeAdtRequest({ url: '/c' });
 
-    expect(stub.connect).toHaveBeenCalledTimes(1);
+    expect(rawConnect).toHaveBeenCalledTimes(1);
     expect(original).toHaveBeenCalledTimes(3);
     expect(stub.rfcParams).toEqual({
       saprouter: '/H/1.2.3.4/H/',

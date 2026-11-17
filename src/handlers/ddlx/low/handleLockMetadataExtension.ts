@@ -8,7 +8,12 @@
 import { createAdtClient } from '../../../lib/clients';
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
 import {
+  lockForLowTool,
+  lockTransportFields,
+} from '../../../lib/lowLockTransport';
+import {
   type AxiosResponse,
+  encodeSapObjectName,
   restoreSessionInConnection,
   return_error,
   return_response,
@@ -75,7 +80,7 @@ export async function handleLockMetadataExtension(
       return return_error(new Error('name is required'));
     }
 
-    const client = createAdtClient(connection, logger);
+    createAdtClient(connection, logger); // wraps the connection (sap-language pinning)
 
     // Restore session state if provided
     if (session_id && session_state) {
@@ -90,9 +95,13 @@ export async function handleLockMetadataExtension(
 
     try {
       // Lock metadata extension
-      const lockHandle = await client
-        .getMetadataExtension()
-        .lock({ name: ddlxName });
+      // Our own LOCK (same request as the dependency's lock()), because that
+      // one drops SAP's CORRNR — see lib/lowLockTransport.ts (issue #3).
+      const lock = await lockForLowTool(
+        connection,
+        `/sap/bc/adt/ddic/ddlx/sources/${encodeSapObjectName(ddlxName).toLowerCase()}`,
+      );
+      const lockHandle = lock.lockHandle;
 
       if (!lockHandle) {
         throw new Error(
@@ -112,6 +121,7 @@ export async function handleLockMetadataExtension(
             name: ddlxName,
             session_id: session_id || null,
             lock_handle: lockHandle,
+            ...lockTransportFields(lock),
             session_state: null, // Session state is not persisted by this server,
             message: `MetadataExtension ${ddlxName} locked successfully. Use this lock_handle and session_id for subsequent update/unlock operations.`,
           },

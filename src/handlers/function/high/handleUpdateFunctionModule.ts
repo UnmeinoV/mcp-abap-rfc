@@ -7,11 +7,23 @@
  * Workflow: validate -> lock -> update -> check -> unlock -> (activate)
  */
 
-import { formatAdtMessages } from '../../../lib/adtMessages';
-import { evaluateActivationResponse } from '../../../lib/adtObjectOps';
+import {
+  activationWarningLines,
+  formatAdtMessages,
+} from '../../../lib/adtMessages';
+import {
+  buildActivationUri,
+  type CheckObjectReport,
+  checkObjectAndReport,
+  evaluateActivationResponse,
+} from '../../../lib/adtObjectOps';
 import { createAdtClient } from '../../../lib/clients';
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
-import { return_error, return_response } from '../../../lib/utils';
+import {
+  encodeSapObjectName,
+  return_error,
+  return_response,
+} from '../../../lib/utils';
 
 export const TOOL_DEFINITION = {
   name: 'UpdateFunctionModule',
@@ -50,6 +62,17 @@ export const TOOL_DEFINITION = {
     required: ['function_group_name', 'function_module_name', 'source_code'],
   },
 } as const;
+
+/** ADT URI of a function module — same shape CheckFunctionModule uses. */
+export function functionModuleUri(
+  functionGroupName: string,
+  functionModuleName: string,
+): string {
+  return (
+    `${buildActivationUri(functionGroupName, 'FUGR')}/fmodules/` +
+    `${encodeSapObjectName(functionModuleName).toLowerCase()}`
+  );
+}
 
 interface UpdateFunctionModuleArgs {
   function_group_name: string;
@@ -105,6 +128,7 @@ export async function handleUpdateFunctionModule(
 
       // Execute operation chain: lock -> update -> check -> unlock -> (activate)
       let lockHandle: string | undefined;
+      let check: CheckObjectReport | undefined;
       try {
         lockHandle = await client.getFunctionModule().lock({
           functionModuleName,
@@ -119,9 +143,15 @@ export async function handleUpdateFunctionModule(
           },
           { lockHandle },
         );
-        await client.getFunctionModule().check({
-          functionModuleName,
-          functionGroupName,
+        // NOT client.getFunctionModule().check(): the dependency's
+        // checkFunctionModule THROWS when the run carries only WARNINGS (its
+        // message is SAP's "Object … has been checked" info line), so a clean
+        // write with two harmless warnings was reported as a failed update and
+        // never activated (issue #4). The verdict is error-level messages only.
+        check = await checkObjectAndReport(connection, {
+          objectUri: functionModuleUri(functionGroupName, functionModuleName),
+          subject: `function module ${functionModuleName}`,
+          version: 'inactive',
         });
       } finally {
         // Always unlock if we got a lock handle
@@ -148,6 +178,16 @@ export async function handleUpdateFunctionModule(
       } catch {
         // Continue anyway — activation will fail explicitly if object isn't ready
       }
+
+      if (check && !check.success) {
+        // The source IS written (inactive); say so, or the caller believes
+        // nothing happened and re-sends into an object that already holds it.
+        throw new Error(
+          `Function module ${functionModuleName} source was written (INACTIVE) but the ` +
+            `syntax check failed, so it was not activated: ${check.message}`,
+        );
+      }
+      const checkWarnings = check?.check_result.warnings ?? [];
 
       let activation: ReturnType<typeof evaluateActivationResponse> | undefined;
       // Activate if requested (after unlock) — and check what SAP actually did.
@@ -180,6 +220,21 @@ export async function handleUpdateFunctionModule(
         transport_request: args.transport_request || null,
         // SAP's verdict, not the request flag.
         activated: activation ? activation.activated : false,
+        ...(checkWarnings.length
+          ? {
+              check_warnings: activationWarningLines(
+                checkWarnings.map((w: any) => ({
+                  type: w.type || 'W',
+                  text: w.line ? `line ${w.line}: ${w.text}` : w.text,
+                })),
+              ),
+            }
+          : {}),
+        ...(activation?.warnings.length
+          ? {
+              activation_warnings: activationWarningLines(activation.warnings),
+            }
+          : {}),
         message: `Function module ${functionModuleName} source code updated successfully${shouldActivate ? ' and activated' : ''}`,
       };
 

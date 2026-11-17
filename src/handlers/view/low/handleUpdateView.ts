@@ -7,6 +7,7 @@
 
 import { createAdtClient } from '../../../lib/clients';
 import type { HandlerContext } from '../../../lib/handlers/interfaces';
+import { resolveLowTransport } from '../../../lib/lowLockTransport';
 import {
   type AxiosResponse,
   restoreSessionInConnection,
@@ -18,7 +19,7 @@ export const TOOL_DEFINITION = {
   name: 'UpdateViewLow',
   available_in: ['onprem', 'legacy'] as const,
   description:
-    '[low-level] Update DDL source code of an existing CDS View or Classic View. Requires lock handle from LockObject. - use UpdateView (high-level) for full workflow with lock/unlock/activate.',
+    '[low-level] Update DDL source code of an existing CDS View or Classic View. Needs a lock handle from LockObject; UpdateView (high-level) does lock/update/unlock/activate.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -34,18 +35,20 @@ export const TOOL_DEFINITION = {
       },
       lock_handle: {
         type: 'string',
+        description: 'Lock handle from LockObject.',
+      },
+      transport_request: {
+        type: 'string',
         description:
-          'Lock handle from LockObject. Required for update operation.',
+          'Transport request/task (corrNr) for a transportable package; omit for $TMP.',
       },
       session_id: {
         type: 'string',
-        description:
-          'Session ID from GetSession. If not provided, a new session will be created.',
+        description: 'Optional session ID from GetSession.',
       },
       session_state: {
         type: 'object',
-        description:
-          'Session state from GetSession (cookies, csrf_token, cookie_store). Required if session_id is provided.',
+        description: 'Session state from GetSession; needed with session_id.',
         properties: {
           cookies: { type: 'string' },
           csrf_token: { type: 'string' },
@@ -58,6 +61,7 @@ export const TOOL_DEFINITION = {
 } as const;
 
 interface UpdateViewArgs {
+  transport_request?: string;
   view_name: string;
   ddl_source: string;
   lock_handle: string;
@@ -91,6 +95,12 @@ export async function handleUpdateView(
     }
 
     const client = createAdtClient(connection, logger);
+    // The caller's argument, else the CORRNR SAP returned to the Lock*Low
+    // call that produced this handle (issue #3).
+    const { transportRequest, source: transportSource } = resolveLowTransport(
+      (args as { transport_request?: string }).transport_request,
+      (args as { lock_handle?: string }).lock_handle,
+    );
 
     // Restore session state if provided
     if (session_id && session_state) {
@@ -108,7 +118,7 @@ export async function handleUpdateView(
       const updateState = await client
         .getView()
         .update(
-          { viewName: viewName, ddlSource: ddl_source },
+          { viewName: viewName, ddlSource: ddl_source, transportRequest },
           { lockHandle: lock_handle },
         );
       const updateResult = updateState.updateResult;
@@ -127,6 +137,10 @@ export async function handleUpdateView(
         data: JSON.stringify(
           {
             success: true,
+            transport_request: transportRequest ?? null,
+            ...(transportSource === 'lock'
+              ? { transport_request_source: 'lock (CORRNR)' }
+              : {}),
             view_name: viewName,
             session_id: session_id || null,
             session_state: null, // Session state is not persisted by this server,

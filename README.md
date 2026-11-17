@@ -85,14 +85,18 @@ Every tool gains an optional `sap_client` argument, and every result ends with a
 
 ## SAP-side helpers
 
-Two tool groups need a small RFC-enabled Z function group on the SAP system. Each has a setup tool that installs it:
+Four tool groups need a small RFC-enabled Z function group on the SAP system. Each has a setup tool that installs it:
 
 | Tools | Helper | Installed by |
 |---|---|---|
-| `GetTranslation` / `UpdateTranslation` / `AddTranslationToTransport` | `ZMCP_LXE` | `SetupTranslationHelper` |
+| `GetTranslation` / `UpdateTranslation` / `AddTranslationToTransport` / `MoveTransportObjects` (within one request) | `ZMCP_LXE` | `SetupTranslationHelper` |
 | `CreateTransaction` / `DeleteTransaction` | `ZMCP_TRAN` | `SetupTransactionHelper` |
+| `DeployDdic` | `ZMCP_DDIC` | `SetupDdicHelper` |
+| `AddGuiStatusButton` / `RemoveGuiStatusButton` / `CopyGuiStatus` / `DeleteGuiStatus` (`GetGuiStatus` needs no helper) | `ZMCP_CUA` | `SetupGuiStatusHelper` |
 
 Installing a helper writes Z code to the system, so ask the system owner first. Other tools on the same system may depend on the helper's version, so don't change the helper source or version casually.
+
+After a setup tool updates a helper this server process had already called, the result says `restart_required: true` and the helper's tools refuse until the server is restarted (the SAP NW RFC SDK caches function signatures per process). Every such text carries the marker `[MCP_RESTART_REQUIRED]`. A first install needs no restart.
 
 ## Development
 
